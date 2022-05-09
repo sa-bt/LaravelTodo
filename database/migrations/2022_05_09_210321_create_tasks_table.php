@@ -18,6 +18,7 @@ class CreateTasksTable extends Migration
             $table->id();
             $table->string('title');
             $table->text('description');
+            $table->foreignId('user_id')->constrained();
             $table->enum('status',Task::$statuses)->default(Task::DOING_STATUS);
             $table->softDeletes();
             $table->timestamps();
