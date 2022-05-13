@@ -49,4 +49,9 @@ class User extends Authenticatable
         self::USER_ROLE,
         self::ADMIN_ROLE
     ];
+
+    public function tasks()
+    {
+        return $this->hasMany(Task::class);
+    }
 }

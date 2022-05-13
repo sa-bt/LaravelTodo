@@ -13,7 +13,7 @@ class RouteServiceProvider extends ServiceProvider
     /**
      * The path to the "home" route for your application.
      *
-     * This is used by Laravel authentication to redirect users after login.
+     * This is used by Laravel authentication to redirect users after auth.
      *
      * @var string
      */
@@ -27,6 +27,8 @@ class RouteServiceProvider extends ServiceProvider
      * @var string|null
      */
     // protected $namespace = 'App\\Http\\Controllers';
+    protected $adminNamespace = 'App\\Http\\Controllers\\Admin';
+    protected $userNamespace = 'App\\Http\\Controllers\\User';
 
     /**
      * Define your route model bindings, pattern filters, etc.
@@ -40,8 +42,14 @@ class RouteServiceProvider extends ServiceProvider
         $this->routes(function () {
             Route::prefix('api')
                 ->middleware('api')
-                ->namespace($this->namespace)
-                ->group(base_path('routes/api.php'));
+                ->namespace($this->userNamespace)
+                ->group(base_path('routes/api/user.php'));
+
+            Route::prefix('api/admin')
+                ->as('admin')
+                ->middleware('api')
+                ->namespace($this->adminNamespace)
+                ->group(base_path('routes/api/admin.php'));
 
             Route::middleware('web')
                 ->namespace($this->namespace)
