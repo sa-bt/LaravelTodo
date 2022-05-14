@@ -46,6 +46,7 @@ class TaskController extends Controller
     public function update(Request $request, Task $task)
     {
         $values = $request->all();
+        $this->authorize('update', $task);
         try {
             $task->update($values);
             return $this->successResponse($task->refresh());
