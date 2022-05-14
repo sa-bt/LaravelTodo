@@ -29,11 +29,17 @@ class AuthController extends Controller
             'password' => ['required', 'min:8', 'confirmed']
         ]);
 
-        User::create([
+        $user=User::create([
             'name' => $request->name,
             'email' => $request->email,
             'password' => Hash::make($request->password)
         ]);
+        $token = $user->createToken($request->device_name)->plainTextToken;
+        $data = [
+            "token" => $token,
+            "isAdmin" => boolval($user->role == User::ADMIN_ROLE)
+        ];
+        return $this->successResponse($data, "Token created successfully", Response::HTTP_OK);
     }
 
     public function login(LoginRequest $request)
