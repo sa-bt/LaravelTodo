@@ -1,0 +1,22 @@
+ backup:
+    depends_on:
+      - mysql
+    build: './database'
+    container_name: database-backup  <= change the name
+    restart: unless-stopped
+    tty: true
+    volumes:
+      #mail configs
+      - ./database/config/msmtprc:/root/.msmtprc
+      - ./database/config/muttrc:/root/.muttrc
+      #backup files
+      - ./database/backups:/root/backups
+    environment:
+      MYSQL_HOST:
+      MYSQL_DATABASE:
+      MYSQL_USER:
+      MYSQL_PASSWORD:
+
+      SERVICE_NAME: backup
+    networks:
+      - network    <= Set the network
