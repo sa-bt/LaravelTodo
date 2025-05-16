@@ -3,47 +3,46 @@
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use App\Traits\ApiResponse;
+use App\Http\Requests\StoreGoalRequest;
+use App\Http\Requests\UpdateGoalRequest;
+
 use Illuminate\Http\Request;
 
 class GoalController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
+    use ApiResponse;
+
+    public function __construct(private GoalRepositoryInterface $goalRepo) {}
+
     public function index()
     {
-        //
+        $goals = $this->goalRepo->getUserGoalsWithChildren(Auth::id());
+        return $this->successResponse($goals);
     }
 
-    /**
-     * Store a newly created resource in storage.
-     */
-    public function store(Request $request)
+    public function store(StoreGoalRequest $request)
     {
-        //
+        $goal = $this->goalRepo->create(array_merge(
+            $request->validated(),
+            ['user_id' => Auth::id()]
+        ));
+
+        return $this->successResponse($goal, __('messages.created'), 201);
     }
 
-    /**
-     * Display the specified resource.
-     */
-    public function show(string $id)
+    public function update(UpdateGoalRequest $request, Goal $goal)
     {
-        //
+        $this->authorize('update', $goal);
+
+        $updated = $this->goalRepo->update($goal, $request->validated());
+        return $this->successResponse($updated, __('messages.updated'));
     }
 
-    /**
-     * Update the specified resource in storage.
-     */
-    public function update(Request $request, string $id)
+    public function destroy(Goal $goal)
     {
-        //
-    }
-
-    /**
-     * Remove the specified resource from storage.
-     */
-    public function destroy(string $id)
-    {
-        //
+        $this->authorize('delete', $goal);
+        $this->goalRepo->delete($goal);
+        return $this->successResponse(null, __('messages.deleted'));
     }
 }

@@ -3,6 +3,9 @@
 namespace App\Providers;
 
 use Illuminate\Support\ServiceProvider;
+use Illuminate\Support\Facades\Route;
+use App\Repositories\GoalRepository;
+
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -11,7 +14,7 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+            $this->app->singleton(GoalRepository::class);
     }
 
     /**
@@ -20,5 +23,7 @@ class AppServiceProvider extends ServiceProvider
     public function boot(): void
     {
         //
+        Route::prefix('api')
+        ->group(base_path('routes/api.php'));
     }
 }
