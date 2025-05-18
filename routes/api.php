@@ -34,7 +34,7 @@ Route::post('/login', function (Request $request) {
     return response()->json(['token' => $user->createToken('token-name')->plainTextToken]);
 });
 
-Route::middleware('auth:sanctum')->prefix('goals')->group(function () {
+Route::prefix('goals')->group(function () {
     Route::get('/', [GoalController::class, 'index']);
     Route::post('/', [GoalController::class, 'store']);
     Route::put('/{goal}', [GoalController::class, 'update']);

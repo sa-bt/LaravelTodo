@@ -4,13 +4,13 @@ namespace App\Repositories;
 
 
 use App\Repositories\AbstractRepository;
-use App\Models\Goal;
+use App\Models\Week;
 
-class GoalRepository extends AbstractRepository
+class WeekRepository extends AbstractRepository
 {
-    public function __construct(Goal $goal)
+    public function __construct(Week $week)
     {
-        $this->model = $goal;
+        $this->model = $week;
     }
 
     // Add goal-specific methods here if needed

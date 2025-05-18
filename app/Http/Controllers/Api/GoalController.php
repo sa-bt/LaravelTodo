@@ -1,48 +1,48 @@
 <?php
+// app/Http/Controllers/Api/GoalController.php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Traits\ApiResponse;
 use App\Http\Requests\StoreGoalRequest;
 use App\Http\Requests\UpdateGoalRequest;
+use App\Repositories\GoalRepository;
+use Illuminate\Http\JsonResponse;
+use App\Http\Resources\GoalResource;
 
-use Illuminate\Http\Request;
 
 class GoalController extends Controller
 {
-    use ApiResponse;
+    public function __construct(private GoalRepository $goalRepo) {}
 
-    public function __construct(private GoalRepositoryInterface $goalRepo) {}
-
-    public function index()
+    public function index(): JsonResponse
     {
-        $goals = $this->goalRepo->getUserGoalsWithChildren(Auth::id());
-        return $this->successResponse($goals);
+        $goals = $this->goalRepo->all();
+
+        return $this->successResponse(GoalResource::collection($goals));
     }
 
-    public function store(StoreGoalRequest $request)
+    public function store(StoreGoalRequest $request): JsonResponse
     {
-        $goal = $this->goalRepo->create(array_merge(
-            $request->validated(),
-            ['user_id' => Auth::id()]
-        ));
-
-        return $this->successResponse($goal, __('messages.created'), 201);
+        $goal = $this->goalRepo->create($request->validated());
+        return response()->json($goal, 201);
     }
 
-    public function update(UpdateGoalRequest $request, Goal $goal)
+    public function show($id): JsonResponse
     {
-        $this->authorize('update', $goal);
-
-        $updated = $this->goalRepo->update($goal, $request->validated());
-        return $this->successResponse($updated, __('messages.updated'));
+        return response()->json($this->goalRepo->find($id));
     }
 
-    public function destroy(Goal $goal)
+    public function update(UpdateGoalRequest $request, $id): JsonResponse
     {
-        $this->authorize('delete', $goal);
-        $this->goalRepo->delete($goal);
-        return $this->successResponse(null, __('messages.deleted'));
+        $goal = $this->goalRepo->update($id, $request->validated());
+        return response()->json($goal);
+    }
+
+    public function destroy($id): JsonResponse
+    {
+        $this->goalRepo->delete($id);
+        return response()->json(null, 204);
     }
 }
+

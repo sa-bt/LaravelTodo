@@ -1,24 +1,27 @@
 <?php
 
-namespace App\Traits;
+// app/Traits/ApiResponse.php
 
+namespace App\Traits;
 
 trait ApiResponse
 {
-    protected function successResponse($data = null, $message = 'OK', $code = 200)
+    public function successResponse($data = null, $messageKey = 'success', $code = 200)
     {
         return response()->json([
-            'status' => true,
-            'message' => $message,
-            'data' => $data
+            'status'  => true,
+            'message' => __($messageKey),
+            'data'    => $data
         ], $code);
     }
 
-    protected function errorResponse($message = 'Something went wrong', $code = 400)
+    public function errorResponse($messageKey = 'error', $code = 400, $errors = [])
     {
         return response()->json([
-            'status' => false,
-            'message' => $message
+            'status'  => false,
+            'message' => __($messageKey),
+            'errors'  => $errors
         ], $code);
     }
 }
+
