@@ -11,18 +11,11 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('goal_week', function (Blueprint $table) {
+        Schema::create('goal_weeks', function (Blueprint $table) {
             $table->id();
-
-            // Foreign key to the goal
             $table->foreignId('goal_id')->constrained()->onDelete('cascade');
-
-            // Foreign key to the week
             $table->foreignId('week_id')->constrained()->onDelete('cascade');
-
-            // Weekly status of this goal (e.g., pending, done, in-progress)
-            $table->string('status')->default('pending');
-
+            $table->enum('status', ['pending', 'done', 'lose'])->default('pending');
             $table->timestamps();
         });
     }
@@ -31,5 +24,4 @@ return new class extends Migration
     {
         Schema::dropIfExists('goal_week');
     }
-
 };

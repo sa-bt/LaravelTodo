@@ -10,7 +10,6 @@ class Week extends Model
     use HasFactory;
 
     protected $fillable = [
-        'week_number',
         'start_date',
         'end_date',
         'result',
