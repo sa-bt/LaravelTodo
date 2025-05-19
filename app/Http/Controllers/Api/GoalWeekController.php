@@ -6,20 +6,20 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreGoalRequest;
 use App\Http\Requests\UpdateGoalRequest;
-use App\Repositories\GoalRepository;
+use App\Repositories\GoalWeekRepository;
 use Illuminate\Http\JsonResponse;
-use App\Http\Resources\GoalResource;
+use App\Http\Resources\GoalWeekResource;
 
 
-class GoalController extends Controller
+class GoalWeekController extends Controller
 {
-    public function __construct(private GoalRepository $goalRepo) {}
+    public function __construct(private GoalWeekRepository $goalRepo) {}
 
     public function index(): JsonResponse
     {
         $goals = $this->goalRepo->all();
 
-        return $this->successResponse(GoalResource::collection($goals));
+        return $this->successResponse(GoalWeekResource::collection($goals));
     }
 
     public function store(StoreGoalRequest $request): JsonResponse

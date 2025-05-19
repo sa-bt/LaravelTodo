@@ -1,6 +1,7 @@
 <?php
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\GoalController;
+use App\Http\Controllers\Api\GoalWeekController;
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
@@ -34,9 +35,6 @@ Route::post('/login', function (Request $request) {
     return response()->json(['token' => $user->createToken('token-name')->plainTextToken]);
 });
 
-Route::prefix('goals')->group(function () {
-    Route::get('/', [GoalController::class, 'index']);
-    Route::post('/', [GoalController::class, 'store']);
-    Route::put('/{goal}', [GoalController::class, 'update']);
-    Route::delete('/{goal}', [GoalController::class, 'destroy']);
-});
+Route::apiResource('goals', GoalController::class);
+Route::apiResource('goal-weeks', GoalWeekController::class);
+
