@@ -9,6 +9,7 @@ use App\Http\Requests\UpdateGoalRequest;
 use App\Repositories\GoalWeekRepository;
 use Illuminate\Http\JsonResponse;
 use App\Http\Resources\GoalWeekResource;
+        use App\Services\WeekService;
 
 
 class GoalWeekController extends Controller
@@ -35,6 +36,11 @@ class GoalWeekController extends Controller
 
     public function update(UpdateGoalRequest $request, $id): JsonResponse
     {
+
+$week = $this->weekRepository->find($goalWeek->week_id);
+$result = WeekService::calculateResult($week);
+$this->weekRepository->update($week->id, ['result' => $result]);
+
         $goal = $this->goalRepo->update($id, $request->validated());
         return response()->json($goal);
     }

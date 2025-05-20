@@ -1,9 +1,23 @@
 <?php 
 
 namespace App\Services;
+use App\Models\Week;
+
 
 class WeekService
 {
+     public static function calculateResult(Week $week): int
+    {
+        $goals = $week->goalWeeks;
+
+        if ($goals->count() === 0) {
+            return 0;
+        }
+
+        $doneCount = $goals->where('status', 'done')->count();
+
+        return round(($doneCount / $goals->count()) * 100);
+    }
     public static function mapResultToColor($result): string
     {
         if ($result < 15) return 'red-dark';

@@ -44,5 +44,25 @@ class GoalController extends Controller
         $this->goalRepo->delete($id);
         return response()->json(null, 204);
     }
+    public function goalsByWeek($weekId)
+{
+    $goalWeeks = GoalWeek::where('week_id', $weekId)->with('goal')->get();
+
+    $data = $goalWeeks->map(function ($gw) {
+        return [
+            'id' => $gw->goal->id,
+            'title' => $gw->goal->title,
+            'status' => $gw->status,
+            'note' => $gw->note,
+        ];
+    });
+
+    return $this->successResponse([
+        'week_id' => $weekId,
+        'title' => optional($goalWeeks->first()->week)->title,
+        'goals' => $data,
+    ]);
+}
+
 }
 

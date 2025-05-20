@@ -7,7 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 
 class GoalWeek extends Model
 {
-      public function goal()
+    public function goal()
     {
         return $this->belongsTo(Goal::class);
     }
@@ -30,5 +30,19 @@ class GoalWeek extends Model
     public function isPending(): bool
     {
         return $this->status === 'pending';
+    }
+    protected static function booted()
+    {
+        static::saved(function ($goalWeek) {
+            $week = $goalWeek->week;
+            $result = \App\Services\WeekService::calculateResult($week);
+            $week->update(['result' => $result]);
+        });
+
+        static::deleted(function ($goalWeek) {
+            $week = $goalWeek->week;
+            $result = \App\Services\WeekService::calculateResult($week);
+            $week->update(['result' => $result]);
+        });
     }
 }

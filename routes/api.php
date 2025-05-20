@@ -1,6 +1,7 @@
 <?php
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\GoalController;
+use App\Http\Controllers\Api\WeekController;
 use App\Http\Controllers\Api\GoalWeekController;
 use App\Models\User;
 use Illuminate\Http\Request;
@@ -36,5 +37,6 @@ Route::post('/login', function (Request $request) {
 });
 
 Route::apiResource('goals', GoalController::class);
+Route::apiResource('weeks', WeekController::class);
 Route::apiResource('goal-weeks', GoalWeekController::class);
 
