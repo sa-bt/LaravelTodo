@@ -11,6 +11,8 @@ return new class extends Migration {
     {
         Schema::create('weeks', function (Blueprint $table) {
             $table->id();
+            $table->foreignId('user_id')->constrained()->onDelete('cascade');
+            $table->string('title');
             $table->date('start_date');          // Start date of the week
             $table->date('end_date');            // End date of the week
             $table->string('color')->nullable(); // Visual color indicator based on performance

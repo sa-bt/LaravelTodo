@@ -38,5 +38,6 @@ Route::post('/login', function (Request $request) {
 
 Route::apiResource('goals', GoalController::class);
 Route::apiResource('weeks', WeekController::class);
+Route::get('/weeks/{id}/goals', [WeekController::class, 'goals']);
 Route::apiResource('goal-weeks', GoalWeekController::class);
 

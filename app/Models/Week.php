@@ -10,6 +10,7 @@ class Week extends Model
     use HasFactory;
 
     protected $fillable = [
+        'title',
         'start_date',
         'end_date',
         'result',
@@ -21,8 +22,8 @@ class Week extends Model
      */
     public function goals()
     {
-        return $this->belongsToMany(Goal::class, 'goal_week')
-                    ->withPivot('status')
-                    ->withTimestamps();
+        return $this->belongsToMany(Goal::class, 'goal_weeks')
+            ->withPivot('status', 'note')
+            ->withTimestamps();
     }
 }

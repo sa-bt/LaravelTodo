@@ -12,6 +12,10 @@ class WeekRepository extends AbstractRepository
     {
         $this->model = $week;
     }
+    public function getGoalsWithStatus($weekId)
+    {
+        return $this->model->with('goals')->findOrFail($weekId)->goals;
+    }
 
     // Add goal-specific methods here if needed
 }

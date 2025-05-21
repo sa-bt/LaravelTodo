@@ -1,12 +1,13 @@
-<?php 
+<?php
 
 namespace App\Services;
+
 use App\Models\Week;
 
 
 class WeekService
 {
-     public static function calculateResult(Week $week): int
+    public static function calculateResult(Week $week): int
     {
         $goals = $week->goalWeeks;
 
@@ -18,19 +19,26 @@ class WeekService
 
         return round(($doneCount / $goals->count()) * 100);
     }
-    public static function mapResultToColor($result): string
+    public function mapResultToColor(?int $result): ?string
     {
-        if ($result < 15) return 'red-dark';
-        if ($result < 25) return 'red';
-        if ($result < 35) return 'red-light';
-        if ($result < 40) return 'yellow-dark';
-        if ($result < 45) return 'yellow';
-        if ($result < 50) return 'yellow-light';
-        if ($result < 57) return 'green-light';
-        if ($result < 66) return 'green';
-        if ($result < 75) return 'green-dark';
-        if ($result < 82) return 'blue-light';
-        if ($result < 90) return 'blue';
-        return 'blue-dark';
+        if ($result === null) {
+            return null; // 👈 بدون رنگ برای هفته‌های خالی یا صفر
+        }
+
+        return match (true) {
+            $result <= 15 => 'red-dark',
+            $result <= 25 => 'red',
+            $result <= 35 => 'red-light',
+            $result <= 40 => 'yellow-dark',
+            $result <= 45 => 'yellow',
+            $result <= 50 => 'yellow-light',
+            $result <= 57 => 'green-light',
+            $result <= 66 => 'green',
+            $result <= 75 => 'green-dark',
+            $result <= 82 => 'blue-light',
+            $result <= 90 => 'blue',
+            $result <= 100 => 'blue-dark',
+            default => null,
+        };
     }
 }

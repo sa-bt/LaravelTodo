@@ -74,5 +74,12 @@ class WeekController extends Controller
         $this->weekRepository->delete($id);
         return $this->successResponse(null, trans('messages.deleted'));
     }
+    public function goals($id)
+{
+    $goals = $this->weekRepository->getGoalsWithStatus($id);
+    return $this->successResponse([
+        'goals' => GoalWithStatusResource::collection($goals),
+    ]);
+}
 }
 
