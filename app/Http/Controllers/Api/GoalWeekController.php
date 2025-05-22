@@ -6,20 +6,21 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreGoalRequest;
 use App\Http\Requests\UpdateGoalRequest;
-use App\Repositories\GoalRepository;
+use App\Repositories\GoalWeekRepository;
 use Illuminate\Http\JsonResponse;
-use App\Http\Resources\GoalResource;
+use App\Http\Resources\GoalWeekResource;
+        use App\Services\WeekService;
 
 
-class GoalController extends Controller
+class GoalWeekController extends Controller
 {
-    public function __construct(private GoalRepository $goalRepo) {}
+    public function __construct(private GoalWeekRepository $goalRepo) {}
 
     public function index(): JsonResponse
     {
         $goals = $this->goalRepo->all();
 
-        return $this->successResponse(GoalResource::collection($goals));
+        return $this->successResponse(GoalWeekResource::collection($goals));
     }
 
     public function store(StoreGoalRequest $request): JsonResponse
@@ -35,6 +36,11 @@ class GoalController extends Controller
 
     public function update(UpdateGoalRequest $request, $id): JsonResponse
     {
+
+$week = $this->weekRepository->find($goalWeek->week_id);
+$result = WeekService::calculateResult($week);
+$this->weekRepository->update($week->id, ['result' => $result]);
+
         $goal = $this->goalRepo->update($id, $request->validated());
         return response()->json($goal);
     }
@@ -44,25 +50,5 @@ class GoalController extends Controller
         $this->goalRepo->delete($id);
         return response()->json(null, 204);
     }
-    public function goalsByWeek($weekId)
-{
-    $goalWeeks = GoalWeek::where('week_id', $weekId)->with('goal')->get();
-
-    $data = $goalWeeks->map(function ($gw) {
-        return [
-            'id' => $gw->goal->id,
-            'title' => $gw->goal->title,
-            'status' => $gw->status,
-            'note' => $gw->note,
-        ];
-    });
-
-    return $this->successResponse([
-        'week_id' => $weekId,
-        'title' => optional($goalWeeks->first()->week)->title,
-        'goals' => $data,
-    ]);
-}
-
 }
 

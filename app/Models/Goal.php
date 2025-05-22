@@ -4,6 +4,8 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
 use App\Models\Task;
+use App\Models\Week;
+
 use App\Models\User;
 
 
@@ -33,4 +35,9 @@ class Goal extends Model
     {
         return $this->hasMany(Task::class);
     }
+    public function weeks()
+{
+    return $this->belongsToMany(Week::class, 'goal_week')->withPivot('status')->withTimestamps();
+}
+
 }
