@@ -19,9 +19,9 @@ class WeekService
 
         return round(($doneCount / $goals->count()) * 100);
     }
-    public function mapResultToColor(?int $result): ?string
+    public static function mapResultToColor(?int $result): ?string
     {
-        if ($result === null) {
+        if ($result === null || $result===0) {
             return null; // 👈 بدون رنگ برای هفته‌های خالی یا صفر
         }
 
@@ -41,4 +41,17 @@ class WeekService
             default => null,
         };
     }
+
+    public function updateWeekResultAndColor(Week $week)
+{
+    $totalGoals = $week->goals()->count();
+    $doneGoals = $week->goals()->wherePivot('status', 'done')->count();
+
+    $result = $totalGoals > 0 ? round(($doneGoals / $totalGoals) * 100) : 0;
+
+    $week->update([
+        'result' => $result,
+    ]);
+}
+
 }

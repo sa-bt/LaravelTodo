@@ -7,16 +7,22 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 use App\Repositories\WeekRepository;
 use App\Http\Resources\WeekResource;
-use App\Traits\ApiResponseTrait;
+use App\Http\Resources\GoalWithStatusResource;
+use App\Repositories\GoalWeekRepository;
+use App\Services\WeekService;
 
 class WeekController extends Controller
 {
 
     protected $weekRepository;
+    protected $goalWeekRepository;
+    protected $weekService;
 
-    public function __construct(WeekRepository $weekRepository)
+    public function __construct(WeekRepository $weekRepository, GoalWeekRepository $goalWeekRepository, WeekService $weekService)
     {
         $this->weekRepository = $weekRepository;
+        $this->goalWeekRepository = $goalWeekRepository;
+        $this->weekService = $weekService;
     }
 
     public function index()
@@ -75,11 +81,24 @@ class WeekController extends Controller
         return $this->successResponse(null, trans('messages.deleted'));
     }
     public function goals($id)
-{
-    $goals = $this->weekRepository->getGoalsWithStatus($id);
-    return $this->successResponse([
-        'goals' => GoalWithStatusResource::collection($goals),
-    ]);
-}
-}
+    {
+        $goals = $this->weekRepository->getGoalsWithStatus($id);
+        return $this->successResponse([
+            'goals' => GoalWithStatusResource::collection($goals),
+        ]);
+    }
+    public function updateGoalStatuses(Request $request, $weekId)
+    {
+        $request->validate([
+            'statuses' => 'required|array',
+            'statuses.*' => 'in:done,missed',
+        ]);
 
+        $this->goalWeekRepository->updateStatusesForWeek($weekId, $request->statuses);
+
+        $week = $this->weekRepository->find($weekId);
+        $this->weekService->updateWeekResultAndColor($week);
+
+        return $this->successResponse(['message' => trans('messages.updated')]);
+    }
+}

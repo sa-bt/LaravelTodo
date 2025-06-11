@@ -15,7 +15,7 @@ trait ApiResponse
         ], $code);
     }
 
-    public function errorResponse($messageKey = 'error', $code = 400, $errors = [])
+    public function errorResponse($errors = [],$messageKey = 'error', $code = 400, )
     {
         return response()->json([
             'status'  => false,
