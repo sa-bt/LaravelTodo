@@ -21,7 +21,7 @@ return new class extends Migration
             // Status: pending, in_progress, completed, etc.
             $table->enum('status', ['pending', 'in_progress', 'completed'])->default('pending');
 
-            $table->enum('priority', ['very_low', 'low', 'medium', 'high', 'very_high'])->default('medium');
+            $table->enum('priority', [ 'low', 'medium', 'high'])->default('medium');
 
             // To support parent-child hierarchy
             $table->foreignId('parent_id')->nullable()->constrained('goals')->nullOnDelete();

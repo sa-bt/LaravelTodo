@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use App\Models\GoalWeek;
+use App\Observers\GoalWeekObserver;
 use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
 use App\Repositories\GoalRepository;
@@ -15,8 +17,8 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-            // $this->app->singleton(GoalRepository::class);
-            //     $this->app->singleton(WeekRepository::class);
+        // $this->app->singleton(GoalRepository::class);
+        //     $this->app->singleton(WeekRepository::class);
     }
 
     /**
@@ -26,6 +28,7 @@ class AppServiceProvider extends ServiceProvider
     {
         //
         Route::prefix('api')
-        ->group(base_path('routes/api.php'));
+            ->group(base_path('routes/api.php'));
+        // GoalWeek::observe(GoalWeekObserver::class);
     }
 }

@@ -33,4 +33,8 @@ abstract class AbstractRepository
     {
         return $this->model->destroy($id);
     }
+    public function whereIn($id,$array)
+    {
+        return $this->model->whereIn($id, $array)->get();
+    }
 }

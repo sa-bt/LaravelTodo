@@ -11,7 +11,7 @@ class UpdateGoalRequest extends FormRequest
      */
     public function authorize(): bool
     {
-        return false;
+        return true;
     }
 
     /**
@@ -22,7 +22,11 @@ class UpdateGoalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            'title' => ['required', 'string', 'max:255'],
+            'description' => ['nullable', 'string'],
+            'priority' => ['in:very_low,low,medium,high,very_high'],
+            'status' => ['in:pending,in_progress,completed'],
+            'parent_id' => ['nullable', 'exists:goals,id'],
         ];
     }
 }

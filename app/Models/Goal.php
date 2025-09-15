@@ -13,7 +13,7 @@ use App\Models\User;
 class Goal extends Model
 {
     protected $fillable = [
-        'user_id', 'title', 'description', 'type', 'parent_id', 'start_date', 'end_date'
+        'user_id', 'title', 'description', 'parent_id', 'priority', 'status'
     ];
 
     public function user()

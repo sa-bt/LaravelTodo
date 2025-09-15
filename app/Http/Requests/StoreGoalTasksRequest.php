@@ -4,7 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 
-class StoreGoalRequest extends FormRequest
+class StoreGoalTasksRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -22,18 +22,15 @@ class StoreGoalRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'priority' => ['in:very_low,low,medium,high,very_high'],
-            'status' => ['in:pending,in_progress, completed'],
-            'parent_id' => ['nullable', 'exists:goals,id'],
+            'goal_id' => 'required|exists:goals,id',
+            'start_date' => 'required|string',
+            'duration' => 'required|integer|min:1|max:365',
         ];
     }
-    
+
     public function messages(): array
     {
         return [
-            'title.required' => __('validation.required', ['attribute' => 'title']),
         ];
     }
 }

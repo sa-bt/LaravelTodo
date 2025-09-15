@@ -3,8 +3,9 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
-class StoreGoalRequest extends FormRequest
+class UpdateTaskRequest extends FormRequest
 {
     /**
      * Determine if the user is authorized to make this request.
@@ -21,19 +22,17 @@ class StoreGoalRequest extends FormRequest
      */
     public function rules(): array
     {
-        return [
-            'title' => ['required', 'string', 'max:255'],
-            'description' => ['nullable', 'string'],
-            'priority' => ['in:very_low,low,medium,high,very_high'],
-            'status' => ['in:pending,in_progress, completed'],
-            'parent_id' => ['nullable', 'exists:goals,id'],
-        ];
+         return [
+        'title' => ['nullable', 'string', 'max:255'],
+        'day' => ['required', 'date'],
+        'is_done' => ['boolean'],
+        'for' => ['nullable', 'numeric', 'max:365', 'min:1'],
+        
+    ];
     }
-    
+
     public function messages(): array
     {
-        return [
-            'title.required' => __('validation.required', ['attribute' => 'title']),
-        ];
+        return [];
     }
 }

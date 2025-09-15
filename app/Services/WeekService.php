@@ -16,7 +16,6 @@ class WeekService
         }
 
         $doneCount = $goals->where('status', 'done')->count();
-
         return round(($doneCount / $goals->count()) * 100);
     }
     public static function mapResultToColor(?int $result): ?string
