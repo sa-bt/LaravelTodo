@@ -4,8 +4,9 @@ use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\AuthController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\GoalController;
+use App\Http\Controllers\Api\PushSubscriptionController;
 use App\Http\Controllers\Api\TaskController;
-use App\Http\Controllers\UserSettingController;
+use App\Http\Controllers\Api\UserSettingController;
 use App\Models\User;
 use App\Notifications\TaskNotification;
 use Illuminate\Http\Request;
@@ -23,24 +24,13 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::post('/user-setting', [UserSettingController::class, 'saveSetting']);
 
 
-    Route::post('/save-subscription', function (Request $request) {
-        $user = Auth::user();
-        \Log::info('Push subscription request', $request->all());
-        \Log::info('User', $user->toArray());
-
-        $user->updatePushSubscription(
-            $request->endpoint,
-            $request->keys['p256dh'],
-            $request->keys['auth']
-        );
-        return response()->json(['success' => true]);
-    });
+    Route::post('/save-subscription',[PushSubscriptionController::class, 'store']);
 });
-// Route::post('/save-subscription', function (Request $request) {
-//     return response()->json(['success' => true]);
-// });
 Route::get('/test', function () {
-    $user = App\Models\User::first();
-    $user->notify(new App\Notifications\TaskNotification());
-    return 'Notification sent!';
+    \Log::info('این یک پیام تست لاگ است!');
+        
+        $this->info('پیام لاگ نوشته شد ✅');
+    // $user = App\Models\User::first();
+    // $user->notify(new App\Notifications\TaskNotification());
+    // return 'Notification sent!';
 });

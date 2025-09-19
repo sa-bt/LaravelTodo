@@ -12,7 +12,7 @@ use NotificationChannels\WebPush\HasPushSubscriptions;
 class User extends Authenticatable
 {
     /** @use HasFactory<\Database\Factories\UserFactory> */
-    use HasFactory, Notifiable, HasApiTokens,HasPushSubscriptions;
+    use HasFactory, Notifiable, HasApiTokens, HasPushSubscriptions;
 
     /**
      * The attributes that are mass assignable.
@@ -23,6 +23,10 @@ class User extends Authenticatable
         'name',
         'email',
         'password',
+        'daily_report',
+        'report_time',
+        'task_reminder',
+        'task_reminder_time'
     ];
 
     /**
