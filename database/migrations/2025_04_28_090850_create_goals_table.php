@@ -4,9 +4,8 @@ use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
-return new class extends Migration
-{
-    
+return new class extends Migration {
+
     public function up(): void
     {
         Schema::create('goals', function (Blueprint $table) {
@@ -21,15 +20,20 @@ return new class extends Migration
             // Status: pending, in_progress, completed, etc.
             $table->enum('status', ['pending', 'in_progress', 'completed'])->default('pending');
 
-            $table->enum('priority', [ 'low', 'medium', 'high'])->default('medium');
+            $table->enum('priority', ['low', 'medium', 'high'])->default('medium');
 
             // To support parent-child hierarchy
             $table->foreignId('parent_id')->nullable()->constrained('goals')->nullOnDelete();
 
-        
+
             // Related to user
             $table->foreignId('user_id')->constrained()->onDelete('cascade');
 
+            // آیا یادآوری برای تسک‌های این هدف فعال باشد؟
+            $table->boolean('send_task_reminder')->default(true);
+
+            // زمان ارسال یادآوری (مثلا 09:00:00)
+            $table->time('reminder_time')->nullable();
             // Timestamps
             $table->timestamps();
         });

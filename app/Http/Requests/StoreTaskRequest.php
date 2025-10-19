@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests;
 
+use App\Rules\LeafGoal;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -31,9 +32,8 @@ class StoreTaskRequest extends FormRequest
                 'required',
                 'exists:goals,id',
                 Rule::unique('tasks')->where(
-                    fn($q) =>
-                    $q->where('day', $this->day)
-                ),
+                    fn($q) => $q->where('day', $this->day)
+                ), new LeafGoal
             ],
         ];
     }

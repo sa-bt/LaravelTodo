@@ -11,9 +11,20 @@ class Kernel extends ConsoleKernel
     /**
      * Define the application's command schedule.
      */
+
+    protected function scheduleTimezone(): ?\DateTimeZone
+    {
+        return new \DateTimeZone(config('app.timezone')); // کل شِدولر بر اساس این TZ اجرا میشه
+    }
     protected function schedule(Schedule $schedule): void
     {
-        $schedule->job(new SendDailyNotifications)->everyMinute();
+        $schedule->command('reports:send-due')->everyMinute()->withoutOverlapping();
+        $schedule->command('tasks:send-due')->everyMinute()->withoutOverlapping();
+        $schedule->command('app:send-goal-reminders')
+            ->everyMinute()
+            ->withoutOverlapping()
+            ->appendOutputTo(storage_path('logs/scheduler-reminders.log'));
+
     }
 
     /**

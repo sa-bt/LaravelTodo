@@ -21,23 +21,51 @@ class AuthController extends Controller
 {
     public function __construct(private GoalRepository $goalRepo) {}
 
+
+
     public function login(Request $request): JsonResponse
     {
-        $credentials = $request->validate([
-            'email' => 'required|email',
-            'password' => 'required'
+        // 0) Honeypot: اگر پر بود => ربات
+        if ($request->filled('website')) {
+            return $this->errorResponse(errors: ['درخواست نامعتبر است.'], code: 422);
+        }
+
+        // 1) اعتبارسنجی ورودی‌ها + توکن کپچا
+        $validated = $request->validate([
+            'email'    => ['required','email'],  // اگر نام‌کاربری هم دارید، این را تغییر بدهید
+            'password' => ['required','string'],
+            'cf_token' => ['required','string'],
         ]);
 
+        // 2) Verify کپچا (Turnstile)
+        try {
+            $verify = Http::asForm()->post('https://challenges.cloudflare.com/turnstile/v0/siteverify', [
+                'secret'   => config('services.turnstile.secret'),
+                'response' => $validated['cf_token'],
+                'remoteip' => $request->ip(),
+            ])->json();
+        } catch (\Throwable $e) {
+            // خطای شبکه/Cloudflare
+            return $this->errorResponse(errors: ['بررسی کپچا انجام نشد. لطفاً دوباره تلاش کنید.'], code: 503);
+        }
+
+        if (!($verify['success'] ?? false)) {
+            return $this->errorResponse(errors: ['تأیید کپچا ناموفق بود.'], code: 422);
+        }
+
+        // 3) تلاش برای ورود
+        $credentials = ['email' => $validated['email'], 'password' => $validated['password']];
         if (!Auth::attempt($credentials)) {
             return $this->errorResponse(errors: ['اطلاعات ورود نادرست است'], code: 401);
         }
 
-
-        $user = Auth::user();
+        // 4) ساخت توکن و پاسخ موفق
+        $user  = Auth::user();
         $token = $user->createToken('api-token')->plainTextToken;
+
         return $this->successResponse([
-            'user' => $user,
-            'token' => $token
+            'user'  => $user,
+            'token' => $token,
         ]);
     }
 

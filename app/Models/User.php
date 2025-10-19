@@ -26,7 +26,8 @@ class User extends Authenticatable
         'daily_report',
         'report_time',
         'task_reminder',
-        'task_reminder_time'
+        'task_reminder_time',
+        'per_task_progress',
     ];
 
     /**
