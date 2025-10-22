@@ -15,6 +15,8 @@ return [
 
     'name' => env('APP_NAME', 'Laravel'),
 
+    'captcha_pepper' => env('APP_CAPTCHA_PEPPER'),
+
     /*
     |--------------------------------------------------------------------------
     | Application Environment

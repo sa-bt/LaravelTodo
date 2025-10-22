@@ -14,7 +14,6 @@ class UpdateGoalRequest extends FormRequest
 
     public function rules(): array
     {
-        // id فعلی از روت
         $goalId = $this->route('id') ?? $this->route('goal');
 
         return [
@@ -26,14 +25,16 @@ class UpdateGoalRequest extends FormRequest
 
             'parent_id'   => [
                 'nullable',
-                // باید متعلق به همان کاربر باشد
                 Rule::exists('goals', 'id')->where(fn($q) => $q->where('user_id', auth()->id())),
-                // خودِ هدف، والد خودش نشود
                 Rule::notIn([$goalId]),
             ],
 
             'send_task_reminder' => ['nullable', 'boolean'],
-            'reminder_time'      => ['nullable', 'date_format:H:i'],
+            'reminder_time'      => ['nullable', 'date_format:H:i', function ($attribute, $value, $fail) {
+                if (request('send_task_reminder') && !$value) {
+                    $fail('زمان یادآوری الزامی است.');
+                }
+            }],
         ];
     }
 }

@@ -16,7 +16,8 @@ class SendGoalReminders extends Command
 
     public function handle(): int
     {
-        $now         = Carbon::now();                    // TODO: اگر per-user timezone داری، اینجا per-user محاسبه کن
+dump(9999);
+        $now = now()->setTimezone(config('app.timezone')); // ⬅️ این خطو اضافه کن
         $currentTime = $now->format('H:i');              // HH:mm
         $today       = $now->toDateString();
         $ttlSeconds  = 70;                               // کمی بیشتر از یک دقیقه برای پوشش جیتِر

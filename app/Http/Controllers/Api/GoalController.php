@@ -12,8 +12,6 @@ use App\Http\Resources\GoalResource;
 use App\Http\Resources\TaskResource;
 use App\Models\Task;
 use App\Models\Goal; // اضافه شد برای متدهای show/update/destroy و چک مالکیت
-use App\Models\GoalWeek; // فرض بر وجود این مدل برای متد goalsByWeek
-use App\Models\Week; // فرض بر وجود این مدل برای متد goalsByWeek
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB; // اضافه شد برای مدیریت تراکنش
 

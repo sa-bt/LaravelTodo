@@ -18,10 +18,10 @@ class UserSettingController extends Controller
         // بازگرداندن تمام فیلدهای تنظیمات اعلان
         return response()->json([
             'daily_report' => $user->daily_report,
-            'report_time' => $user->report_time,
             'task_reminder' => $user->task_reminder,
-            'task_reminder_time' => $user->task_reminder_time,
             'per_task_progress' => $user->per_task_progress, // فیلد جدید
+            'report_time' => $user->report_time ? substr($user->report_time, 0, 5) : null,
+            'task_reminder_time' => $user->task_reminder_time ? substr($user->task_reminder_time, 0, 5) : null,
         ]);
     }
 

@@ -18,10 +18,11 @@ class GoalResource extends JsonResource
             'parent_title'  => $this->whenLoaded('parent', fn() => optional($this->parent)->title),
             'created_at'    => $this->created_at->toDateTimeString(),
 
-            // به جای count() در لحظه، از ستون آماده استفاده می‌کنیم:
+            'send_task_reminder' => $this->send_task_reminder,
+            'reminder_time'      => optional($this->reminder_time)->format('H:i'),
+
             'children_count'=> $this->when(isset($this->children_count), $this->children_count),
 
-            // اگر مدل مقدار stats دارد، همان را بده؛ وگرنه مقدار تهیِ استاندارد
             'stats' => $this->stats ?? [
                     'total' => 0,
                     'done' => 0,

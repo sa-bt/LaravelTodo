@@ -19,32 +19,18 @@ class GenericWebPush extends Notification implements ShouldQueue
         public array $meta = [],
         public ?string $icon = '/icons/notification.png',
         public ?string $tag  = null,
-        public array $channels = ['database', WebPushChannel::class], // 👈 پیش‌فرض دوکاناله
     ) {}
 
     public function via(object $notifiable): array
     {
         // اگر کاربر subscription ندارد، همچنان رکورد دیتابیسی ثبت شود
         if (empty($this->channels)) {
-            return ['database', WebPushChannel::class];
+            return [WebPushChannel::class];
         }
         return $this->channels;
     }
 
     // ذخیره در جدول notifications
-    public function toArray(object $notifiable): array
-    {
-        return [
-            'type'    => $this->meta['type'] ?? 'generic',
-            'title'   => $this->title,
-            'body'    => $this->body,
-            'url'     => $this->url ?? url('/'),
-            'meta'    => $this->meta,
-            'icon'    => $this->icon,
-            'tag'     => $this->tag,
-            'sent_at' => now()->toISOString(),
-        ];
-    }
 
     // پیام Web Push
     public function toWebPush(object $notifiable, object $notification): WebPushMessage

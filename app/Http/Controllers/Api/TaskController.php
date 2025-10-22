@@ -72,78 +72,71 @@ class TaskController extends Controller
     {
         $data = $request->validated();
 
-        // 1. Fetch Task and Authorize
+        // 1️⃣ دریافت تسک و کاربر
         $task = $this->repository->find($id);
-
-        if (!$task || $task->goal->user_id !== auth()->user()->id) {
-            return response()->json(['message' => 'Task not found or unauthorized.'], 403);
-        }
-
-        // 2. Convert Jalaali Date
-        $data['day'] = Jalalian::fromFormat('Y-m-d', $data['day'])
-            ->toCarbon();
-
-        // Check if the task is being marked as done
-        $isBeingCompleted = isset($data['is_done']) && $data['is_done'] == true && $task->is_done == false;
-
-        // 3. Perform the Update
-        $task = $this->repository->update($id, $data);
-
-        // --------------------------------------------------------
-        // 4. Per-Task Progress Notification Logic (via Queue)
-        // --------------------------------------------------------
         $user = auth()->user();
 
-        // Assumes 'per_task_progress' is available on the User model/relation
-        if ($isBeingCompleted && $user->per_task_progress) {
-
-            // a. Calculate User's Daily Progress
-            $today = $task->day->toDateString();
-
-            $userGoalIds = $user->goals->pluck('id');
-
-            // Find all tasks related to the user's goals for that day
-            $allTasksToday = Task::whereIn('goal_id', $userGoalIds)
-                ->whereDate('day', $today);
-
-            $totalTasks = $allTasksToday->count();
-            // Important: We need a fresh count of completed tasks based on the updated state
-            $completedTasks = Task::whereIn('goal_id', $userGoalIds)
-                ->whereDate('day', $today)
-                ->where('is_done', true)
-                ->count();
-
-            // Calculate progress percentage
-            $progress = $totalTasks > 0 ? round(($completedTasks / $totalTasks) * 100) : 100;
-
-            // b. Define Notification Content
-            $notificationTitle = '🎉 پیشرفت روزانه به‌روز شد';
-            $notificationBody = "تسک «{$task->title}» کامل شد! اکنون {$progress}% از اهداف تاریخ {$task->day->toDateString()} خود را تکمیل کرده‌اید.";
-
-            // c. Send Web Push Notification via Job (Non-blocking)
-            SendProgressNotificationJob::dispatch(
-                $user,
-                $notificationTitle,
-                $notificationBody,
-                $progress
+        if (!$task || $task->goal->user_id !== $user->id) {
+            return $this->errorResponse(
+                errors: ['Task not found or unauthorized.'],
+                messageKey: 'forbidden',
+                code: 403
             );
-
-            // ✅ لاگ تایید Dispatch
-            Log::info("SUCCESS: Notification Job Dispatched for User {$user->id}.", [
-                'task_id' => $task->id,
-                'progress' => $progress,
-            ]);
-
-        } else {
-            // ❌ لاگ عدم Dispatch
-            Log::warning("FAILURE: Notification Job NOT Dispatched.", [
-                'task_id' => $task->id,
-                'isBeingCompleted' => $isBeingCompleted,
-                'user_setting' => $user->per_task_progress ?? 'UNDEFINED/FALSE',
-            ]);
         }
 
-        return $this->successResponse(new TaskResource($task), 'success', 200);
+        // 2️⃣ تبدیل تاریخ شمسی به میلادی
+        $data['day'] = \Morilog\Jalali\Jalalian::fromFormat('Y-m-d', $data['day'])->toCarbon();
+
+        // 3️⃣ گرفتن وضعیت پیشرفت قبل از تغییر
+        $service = new \App\Services\ProgressMessageService();
+        $progressBefore = $service->getUserProgressForDate($user->id, $data['day']);
+        $beforePercent  = $progressBefore['percent'];
+
+        // 4️⃣ انجام آپدیت تسک
+        $oldStatus = $task->is_done;
+        $task = $this->repository->update($id, $data);
+        $newStatus = $task->is_done;
+
+        // 5️⃣ گرفتن وضعیت بعد از تغییر
+        $progressAfter = $service->getUserProgressForDate($user->id, $data['day']);
+        $afterPercent  = $progressAfter['percent'];
+        $remaining     = $progressAfter['remaining'];
+
+        // 6️⃣ تشخیص جهت تغییر (forward/backward)
+        $direction = $afterPercent > $beforePercent ? 'forward' : 'backward';
+        $context   = $direction === 'forward' ? 'report' : 'regress';
+
+        // 7️⃣ ساخت پیام داینامیک بر اساس وضعیت
+        try {
+            $result = $service->buildMessage(
+                $afterPercent,
+                $remaining,
+                $context,
+                ['direction' => $direction]
+            );
+
+            $progressMessage = $result['text'];
+            $displayDuration = $result['duration'];
+
+
+        } catch (\Throwable $e) {
+            \Log::error("❌ Failed to generate progress message", [
+                'user_id' => $user->id,
+                'task_id' => $task->id,
+                'error'   => $e->getMessage(),
+            ]);
+            $progressMessage = null;
+            $displayDuration = 4000; // پیش‌فرض
+        }
+
+        // 8️⃣ بازگشت پاسخ استاندارد
+        return $this->successResponse(
+            data: [
+                'task'     => new \App\Http\Resources\TaskResource($task),
+                'message'  => $progressMessage,
+                'duration' => $displayDuration,
+            ],
+        );
     }
 
     public function destroy($id): JsonResponse
