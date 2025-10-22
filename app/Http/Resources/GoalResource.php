@@ -15,6 +15,7 @@ class GoalResource extends JsonResource
             'status'        => $this->status,
             'priority'      => $this->priority,
             'parent_id'     => $this->parent_id,
+            'description'     => $this->description,
             'parent_title'  => $this->whenLoaded('parent', fn() => optional($this->parent)->title),
             'created_at'    => $this->created_at->toDateTimeString(),
 
