@@ -35,19 +35,26 @@ class GenericWebPush extends Notification implements ShouldQueue
     // پیام Web Push
     public function toWebPush(object $notifiable, object $notification): WebPushMessage
     {
+        // کاراکتر کنترل برای شروع و پایان متن راست‌به‌چپ
+        $rtlStart = "\u{202B}"; // Right-to-left embedding
+        $rtlEnd   = "\u{202C}"; // Pop directional formatting
+
+        $title = $rtlStart . $this->title . $rtlEnd;
+        $body  = $rtlStart . $this->body  . $rtlEnd;
+        
         $msg = (new WebPushMessage)
-            ->title($this->title)
-            ->body($this->body)
+            ->title($title)
+            ->body($body)
             ->icon($this->icon ?? '/icons/notification.png')
             ->data(['url' => $this->url ?? url('/')] + $this->meta)
             ->vibrate([100, 50, 100])
-            ->options(['renotify' => true])
+            ->options(['renotify' => true, 'dir' => 'rtl', 'lang' => 'fa-IR'])
             ->action('باز کردن', 'open_app');
 
         if ($this->tag) {
             $msg->tag($this->tag);
         } else {
-            $msg->tag(md5($this->title.$this->body.($this->url ?? '')));
+            $msg->tag(md5($this->title . $this->body . ($this->url ?? '')));
         }
 
         return $msg;

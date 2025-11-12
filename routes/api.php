@@ -18,6 +18,7 @@ Route::post('/register', [AuthController::class, 'register'])->middleware('throt
 
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:15,1');
 Route::middleware('auth:sanctum')->group(function () {
+    Route::get('/goals/parentable', [GoalController::class, 'getParentableGoals'])->name('goals.parentable');
     Route::apiResource('goals', GoalController::class);
     Route::apiResource('tasks', TaskController::class);
     Route::post('goal-tasks', [GoalController::class, 'tasks']);
@@ -33,8 +34,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications',            [NotificationController::class, 'destroyAll']);
 
     Route::middleware('auth:sanctum')->post('/save-subscription', [PushSubscriptionController::class, 'store']);
-
-
 });
 
 Route::post('/captcha/new', [CaptchaController::class, 'new'])
@@ -46,7 +45,7 @@ Route::post('/captcha/verify', [CaptchaController::class, 'verify'])
 Route::get('/test', function () {
     \Log::info('این یک پیام تست لاگ است!');
 
-        $this->info('پیام لاگ نوشته شد ✅');
+    $this->info('پیام لاگ نوشته شد ✅');
     // $user = App\Models\User::first();
     // $user->notify(new App\Notifications\TaskNotification());
     // return 'Notification sent!';

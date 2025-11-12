@@ -34,9 +34,9 @@ class UserSettingController extends Controller
             // اعتبارسنجی: فرمت زمان H:i (HH:MM) را می‌پذیرد
             $data = $request->validate([
                 'daily_report' => 'required|boolean',
-                'report_time' => 'required|date_format:H:i',
+                'report_time' => 'required',
                 'task_reminder' => 'required|boolean',
-                'task_reminder_time' => 'required|date_format:H:i',
+                'task_reminder_time' => 'required',
                 'per_task_progress' => 'required|boolean', // فیلد جدید
             ]);
 

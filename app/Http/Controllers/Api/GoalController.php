@@ -82,10 +82,15 @@ class GoalController extends Controller
      */
     public function destroy($id): JsonResponse
     {
-        // ✅ اصلاح امنیتی: اطمینان از اینکه کاربر فقط هدف خود را حذف می‌کند.
-        $goal = Goal::where('user_id', auth()->id())
-            ->findOrFail($id);
 
+        // ✅ اصلاح امنیتی: اطمینان از اینکه کاربر فقط هدف خود را حذف می‌کند.
+        $goal = Goal::with('children')->where('user_id', auth()->id())
+            ->findOrFail($id);
+        if ($goal->children()->exists()) {
+            return $this->errorResponse([
+                'message' => 'نمی‌توان هدف والد را حذف کرد. ابتدا زیرهدف‌های آن را حذف کنید.'
+            ], code: 422);
+        }
         // ✅ اصلاح: استفاده از تراکنش برای اطمینان از حذف کامل و ایمن
         DB::transaction(function () use ($goal) {
             // فرض بر اینکه Task ها به صورت Cascade حذف می‌شوند. اگر نه، باید اینجا tasks را حذف کرد.
@@ -216,5 +221,19 @@ class GoalController extends Controller
             'range_days'     => $duration,
             'generated_days' => count($allDates),
         ], 201);
+    }
+    public function getParentableGoals(): JsonResponse
+    {
+        $goals = Goal::query()
+            ->where('user_id', auth()->id())
+            ->where(function ($q) {
+                $q->whereHas('children')        // اهداف والد واقعی
+                    ->orWhereDoesntHave('tasks'); // یا اهداف بدون تسک
+            })
+            ->withCount(['children', 'tasks'])
+            ->orderBy('title')
+            ->get(['id', 'title']);
+
+        return $this->successResponse($goals);
     }
 }

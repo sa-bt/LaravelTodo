@@ -2,54 +2,86 @@
 
 namespace App\Notifications;
 
+use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 use Illuminate\Notifications\Messages\MailMessage;
+use NotificationChannels\WebPush\WebPushChannel;
 use NotificationChannels\WebPush\WebPushMessage;
-use App\Models\User;
-class DailyReportNotification extends Notification
+
+class DailyReportNotification extends Notification implements ShouldQueue
 {
-    
+    use Queueable;
 
-    protected $type;
-    protected $user;
+    public function __construct(
+        public string $title,
+        public string $body,
+        public ?string $url = null,
+        public ?int $percent = null,
+        public ?int $remaining = null,
+        public array $meta = [],
+        public ?string $icon = '/webpush-icons/report.png',
+        public ?string $tag = 'daily-report',
+    ) {}
 
-    public function __construct(User $user, string $type)
+    /**
+     * 🔹 کانال‌های ارسالی
+     */
+    public function via($notifiable): array
     {
-        $this->user = $user;
-        $this->type = $type;
+        return [WebPushChannel::class, 'database', 'mail'];
     }
 
-    public function via($notifiable)
+    /**
+     * 🔹 ذخیره در جدول notifications
+     */
+    public function toDatabase($notifiable): array
     {
-        return ['mail', 'webpush'];
+        return [
+            'title' => $this->title,
+            'body'  => $this->body,
+            'url'   => $this->url,
+            'icon'  => $this->icon,
+            'tag'   => $this->tag,
+            'meta'  => $this->meta,
+            'percent' => $this->percent,
+            'remaining' => $this->remaining,
+        ];
     }
 
-    public function toMail($notifiable)
+    /**
+     * 🔹 ارسال ایمیل با قالب فارسی
+     */
+    public function toMail($notifiable): MailMessage
     {
-        if ($this->type === 'report') {
-            return (new MailMessage)
-                ->subject('گزارش روزانه')
-                ->line('گزارش روزانه اهداف شما آماده است.')
-                ->action('مشاهده اهداف', url('/goals'));
-        } else {
-            return (new MailMessage)
-                ->subject('یادآوری انجام تسک‌ها')
-                ->line('یادآوری انجام تسک‌های امروز شما')
-                ->action('مشاهده تسک‌ها', url('/tasks/today'));
-        }
+        return (new MailMessage)
+            ->view('emails.daily_report', [
+                'user' => $notifiable,
+                'title' => $this->title,
+                'body' => $this->body,
+                'url' => $this->url,
+                'percent' => $this->percent,
+                'remaining' => $this->remaining,
+            ])
+            ->subject('📊 گزارش پیشرفت روزانه')
+            ->from(config('mail.from.address'), config('mail.from.name'));
     }
 
-    public function toWebPush($notifiable, $notification)
+    /**
+     * 🔹 اعلان وب‌پوش
+     */
+    public function toWebPush($notifiable, $notification): WebPushMessage
     {
-        $title = $this->type === 'report' ? 'گزارش روزانه' : 'یادآوری تسک‌ها';
-        $body = $this->type === 'report'
-            ? 'گزارش روزانه اهداف شما آماده است.'
-            : 'یادآوری انجام تسک‌های امروز شما';
-
         return (new WebPushMessage)
-            ->title($title)
-            ->body($body)
-            ->icon('/icon.png')
-            ->action('مشاهده', $this->type === 'report' ? url('/goals') : url('/tasks/today'));
+            ->title($this->title)
+            ->body($this->body)
+            ->icon($this->icon)
+            ->tag($this->tag)
+            ->data([
+                'url' => $this->url,
+                'meta' => $this->meta,
+                'percent' => $this->percent,
+                'remaining' => $this->remaining,
+            ]);
     }
 }
