@@ -25,6 +25,8 @@ class User extends Authenticatable
         'password',
         'daily_report',
         'report_time',
+        'verification_code',
+        'verification_code_expires_at',
         'task_reminder',
         'task_reminder_time',
         'per_task_progress',

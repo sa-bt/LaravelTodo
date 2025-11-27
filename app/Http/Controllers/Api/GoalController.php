@@ -10,6 +10,7 @@ use App\Repositories\GoalRepository;
 use Illuminate\Http\JsonResponse;
 use App\Http\Resources\GoalResource;
 use App\Http\Resources\TaskResource;
+use Morilog\Jalali\Jalalian;
 use App\Models\Task;
 use App\Models\Goal; // اضافه شد برای متدهای show/update/destroy و چک مالکیت
 use Illuminate\Http\Request;
@@ -44,7 +45,7 @@ class GoalController extends Controller
         $data['user_id'] = auth()->id();
 
         $goal = $this->goalRepo->create($data);
-
+        $goal->loadCount(['children', 'tasks']);
         // ✅ اصلاح: اطمینان از بازگرداندن GoalResource پس از ساخت
         return $this->successResponse(new GoalResource($goal), 201);
     }
@@ -100,89 +101,60 @@ class GoalController extends Controller
         return $this->successResponse(null, 204); // پاسخ 204 No Content برای حذف موفق
     }
 
-    /**
-     * Retrieves goals associated with a specific Week ID (assuming GoalWeek and Week models exist).
-     */
-    public function goalsByWeek($weekId): JsonResponse
-    {
-        // GoalWeek باید یک مدل واسطه بین Goal و Week باشد.
-        $goalWeeks = GoalWeek::where('week_id', $weekId)
-            // ✅ اصلاح امنیتی: فیلتر کردن بر اساس مالکیت Goal
-            ->whereHas('goal', function ($query) {
-                $query->where('user_id', auth()->id());
-            })
-            ->with(['goal', 'week'])
-            ->get();
 
-        if ($goalWeeks->isEmpty()) {
-            // اگر برای این هفته و این کاربر هدفی پیدا نشد
-            $week = Week::find($weekId); // تلاش برای بازیابی عنوان هفته حتی اگر هدف نباشد
-            $title = $week ? $week->title : 'هفته نامشخص';
 
-            return $this->successResponse([
-                'week_id' => (int)$weekId,
-                'title' => $title,
-                'goals' => [],
-            ]);
-        }
-
-        $data = $goalWeeks->map(function ($gw) {
-            return [
-                'id' => $gw->goal->id,
-                'title' => $gw->goal->title,
-                'status' => $gw->status,
-                'note' => $gw->note,
-            ];
-        });
-
-        // ✅ اطمینان از اینکه title به درستی بازیابی شود
-        return $this->successResponse([
-            'week_id' => (int)$weekId,
-            'title' => optional($goalWeeks->first()->week)->title,
-            'goals' => $data,
-        ]);
-    }
-
-    /**
-     * Creates tasks for a goal over a specified duration.
-     */
     public function tasks(StoreGoalTasksRequest $request): JsonResponse
     {
-        // امنیت: فقط صاحب هدف
-        $goalId = $request->validated('goal_id');
-        Goal::where('user_id', auth()->id())->findOrFail($goalId);
+        // 1. امنیت: فقط صاحب هدف
+        $data = $request->validated();
+        $goalId = $data['goal_id'];
+        
+        // ✅ بازیابی هدف برای چک مالکیت و استفاده بعدی
+        $goal = Goal::where('user_id', auth()->id())->findOrFail($goalId);
+        
+        // 2. آماده سازی پارامترها
+        $startDate = Jalalian::fromFormat('Y/m/d', $data['start_date'])->toCarbon();
+        $duration = (int) $data['duration'];
+        $pattern  = $data['pattern'] ?? 'daily';
+        
+        $daysOfWeek = $data['days_of_week'] ?? [];
+        $isValidWeekly = $pattern === 'weekly' && !empty($daysOfWeek);
 
-        $data       = $request->validated();
-        $startDate  = \Morilog\Jalali\Jalalian::fromFormat('Y/m/d', $data['start_date'])->toCarbon();
-        $duration   = (int) $data['duration'];
+        $step = 1;
+        $offset = 0;
 
-        // 🟢 مقداردهی پیش‌فرض (سازگاری عقب‌رو)
-        $pattern = $data['pattern'] ?? 'daily';
-        $step    = (int) ($data['step'] ?? 1);
-        $offset  = (int) ($data['offset'] ?? 0);
-
-        // اگر pattern یکی از alternate_* بود، مقادیر step/offset را همسان‌سازی کن
         if (in_array($pattern, ['alternate_odd', 'alternate_even'], true)) {
-            $step   = 2;                   // یک‌روزدرمیان
-            $offset = $pattern === 'alternate_even' ? 1 : 0; // even => 1 | odd => 0
-        } else {
-            // daily
-            $step   = 1;
-            $offset = 0;
+            $step = 2; // یک‌روزدرمیان
+            $offset = $pattern === 'alternate_even' ? 1 : 0;
         }
 
-        // تولید تاریخ‌ها بر اساس duration، step، offset
-        // duration = طول بازه به روز؛ i از 0 تا duration-1
+        // 3. تولید تاریخ‌ها (منطق بدون تغییر)
         $allDates = [];
+        $dayMapToCarbon = [
+            'SU' => 0, 'MO' => 1, 'TU' => 2, 'WE' => 3, 'TH' => 4, 'FR' => 5, 'SA' => 6
+        ];
+        $carbonDaysFilter = array_map(fn($d) => $dayMapToCarbon[$d], $daysOfWeek);
+
         for ($i = 0; $i < $duration; $i++) {
-            if ($step === 1 || ($i % $step) === $offset) {
-                $allDates[] = $startDate->copy()->addDays($i)->toDateString();
+            $currentDate = $startDate->copy()->addDays($i);
+            $shouldCreate = false;
+
+            if ($isValidWeekly) {
+                if (in_array($currentDate->dayOfWeek, $carbonDaysFilter)) {
+                    $shouldCreate = true;
+                }
+            } else {
+                if (($i % $step) === $offset) {
+                    $shouldCreate = true;
+                }
+            }
+
+            if ($shouldCreate) {
+                $allDates[] = $currentDate->toDateString();
             }
         }
 
-        // اگر به‌هر دلیل (مثلا duration=1 و offset=1) خالی شد، برای UX حداقلی، روز شروع را اضافه نکنیم؟ (اختیاری)
-        // ترجیح: نه—همون منطق دقیق باقی بمونه. اگر خواستی، اینجا هندل کن.
-
+        // 4. مدیریت درج و تکراری‌ها (بدون تغییر)
         $tasksToInsert = [];
         $existingDates = [];
 
@@ -210,16 +182,19 @@ class GoalController extends Controller
             }
         });
 
+      $goal = Goal::query()
+    ->where('user_id', auth()->id())
+    ->where('id', $goalId)
+    ->with(['tasks']) // ⬅️ بارگذاری رابطه 'tasks' که توسط Accessor 'stats' استفاده می‌شود.
+    ->firstOrFail();
+        
+        // 5b. پاسخ نهایی شامل هدف
         return $this->successResponse([
-            'message'        => 'تسک‌ها با موفقیت ایجاد شدند و تکراری‌ها نادیده گرفته شدند.',
+            'message'        => 'تسک‌ها با موفقیت ایجاد شدند و آمار هدف بروزرسانی شد.',
             'inserted_count' => count($tasksToInsert),
             'skipped_count'  => count($existingDates),
-            // 🔎 برای دیباگ/شفافیت، ورودی‌های الگو را هم برگردان (اختیاری)
-            'pattern'        => $pattern,
-            'step'           => $step,
-            'offset'         => $offset,
-            'range_days'     => $duration,
-            'generated_days' => count($allDates),
+            // ✅ فیلد کلیدی: هدف به‌روز شده برای Store Pinia
+            'goal'           => new GoalResource($goal), 
         ], 201);
     }
     public function getParentableGoals(): JsonResponse

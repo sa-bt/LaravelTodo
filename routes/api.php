@@ -15,7 +15,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:15,1');
-
+Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
+Route::post('/resend-otp', [AuthController::class, 'resendOtp']);
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:15,1');
 Route::middleware('auth:sanctum')->group(function () {
     Route::get('/goals/parentable', [GoalController::class, 'getParentableGoals'])->name('goals.parentable');

@@ -6,13 +6,7 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreGoalTasksRequest extends FormRequest
 {
-    /**
-     * Determine if the user is authorized to make this request.
-     */
-    public function authorize(): bool
-    {
-        return true;
-    }
+    // ... (authorize و messages بدون تغییر) ...
 
     /**
      * Get the validation rules that apply to the request.
@@ -23,14 +17,20 @@ class StoreGoalTasksRequest extends FormRequest
     {
         return [
             'goal_id' => 'required|exists:goals,id',
-            'start_date' => 'required|string',
+            
+            // تاریخ شمسی (فرمت آن چک نمی‌شود، فقط وجود آن کافی است)
+            'start_date' => 'required|string', 
+            
             'duration' => 'required|integer|min:1|max:365',
-        ];
-    }
+            
+            // ✅ فیلدهای جدید برای الگوی تکرار:
+            'pattern'    => 'nullable|string|in:daily,alternate_odd,alternate_even,weekly',
+            'step'       => 'nullable|integer|min:1',
+            'offset'     => 'nullable|integer|min:0',
 
-    public function messages(): array
-    {
-        return [
+            // ✅ فیلد آرایه‌ای روزهای هفته:
+            'days_of_week' => 'nullable|array',
+            'days_of_week.*' => 'nullable|string|in:SU,MO,TU,WE,TH,FR,SA', // اعتبارسنجی مقادیر داخل آرایه
         ];
     }
 }
