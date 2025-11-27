@@ -7,8 +7,8 @@ return [
     'allowed_methods' => ['*'],
 
     'allowed_origins' => [
-        'https://sa-bt.ir', 
-        'https://www.sa-bt.ir',
+        env('FRONTEND_URL1'),
+        env('FRONTEND_URL2'),
     ],
 
     'allowed_origins_patterns' => [],

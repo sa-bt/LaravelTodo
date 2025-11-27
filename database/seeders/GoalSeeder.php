@@ -14,6 +14,7 @@ class GoalSeeder extends Seeder
     public function run(): void
     {
         $user = User::where('email', 'bakhshian2020@gmail.com')->first();
+        dd($user);
 
         if (!$user) {
             echo "⛔ User with email sa.bt@chmail.ir not found.\n";
