@@ -18,8 +18,17 @@ return new class extends Migration
             $table->timestamp('email_verified_at')->nullable();
             $table->string('password');
             $table->rememberToken();
-            $table->string('verification_code')->nullable();
+            $table->boolean('daily_report')->default(false);
+            $table->time('report_time')->default('08:00:00');
+
+            // یادآوری تسک‌ها
+            $table->boolean('task_reminder')->default(false);
+            $table->time('task_reminder_time')->default('09:00:00');
+
+            // ✅ اعلان پیشرفت لحظه‌ای (فیلد جدید)
+            $table->boolean('per_task_progress')->default(false);
             // زمان انقضای کد
+            $table->string('verification_code')->nullable();
             $table->timestamp('verification_code_expires_at')->nullable();
             $table->timestamps();
         });
@@ -29,6 +38,7 @@ return new class extends Migration
             $table->string('token');
             $table->timestamp('created_at')->nullable();
         });
+
 
         Schema::create('sessions', function (Blueprint $table) {
             $table->string('id')->primary();
