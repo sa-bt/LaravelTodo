@@ -54,7 +54,6 @@ class AuthController extends Controller
             // (اختیاری) اینجا می‌تونی شمارندهٔ تلاش‌ها بگذاری و بعد از N بار، خطای سخت‌تر بدهی
             return $this->errorResponse(errors: ['کد تأیید اشتباه است.'], code: 422);
         }
-dd($validated);
         // 3) تلاش برای ورود
         $credentials = ['email' => $validated['email'], 'password' => $validated['password']];
         if (!Auth::attempt($credentials)) {
