@@ -86,7 +86,7 @@ class GoalReminderJob implements ShouldQueue
 
         // ✅ پیام داینامیک
         $builder = app(NotificationMessageBuilder::class);
-        $message = $builder->buildForReminder($user, $task);
+        $message = $builder->build($user, $task);
 
         $title = $this->title ?? "یادآور تسک";
         $body  = $this->body  ?? $message;
@@ -108,7 +108,6 @@ class GoalReminderJob implements ShouldQueue
                 meta:  $meta,
                 icon:  $icon,
                 tag:   $tag,
-                channels: $this->channels
             );
 
             $user->notify($notification);
