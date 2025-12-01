@@ -37,14 +37,14 @@ class SendDailyReportsDue extends Command
             ->chunkById(200, function ($users) use ($today, $now) {
                 foreach ($users as $user) {
                     // dd($user->report_time, $now->format('H:i:s'));
-                    // $key = "daily_report_sent:{$user->id}:{$today}";
+                    $key = "daily_report_sent:{$user->id}:{$today}";
 
-                    // // ست کردن اتمیک: اگر وجود ندارد، بساز و همزمان dispatch کن
-                    // $set = Cache::add($key, true, $now->copy()->endOfDay());
-                    // if (!$set) {
-                    //     // قبلاً امروز ارسال شده
-                    //     continue;
-                    // }
+                    // ست کردن اتمیک: اگر وجود ندارد، بساز و همزمان dispatch کن
+                    $set = Cache::add($key, true, $now->copy()->endOfDay());
+                    if (!$set) {
+                        // قبلاً امروز ارسال شده
+                        continue;
+                    }
 
                     // حالا امن dispatch کن
                     SendDailyReportNotification::dispatch($user->id);
