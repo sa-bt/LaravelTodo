@@ -8,6 +8,7 @@ use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\GoalController;
 use App\Http\Controllers\Api\PushSubscriptionController;
 use App\Http\Controllers\Api\TaskController;
+use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\UserSettingController;
 use App\Models\User;
 use App\Notifications\TaskNotification;
@@ -43,11 +44,16 @@ Route::post('/captcha/new', [CaptchaController::class, 'new'])
 // بررسی پاسخ
 Route::post('/captcha/verify', [CaptchaController::class, 'verify'])
     ->middleware('throttle:60,1');
-Route::get('/test', function () {
-    \Log::info('این یک پیام تست لاگ است!');
-
-    $this->info('پیام لاگ نوشته شد ✅');
-    // $user = App\Models\User::first();
-    // $user->notify(new App\Notifications\TaskNotification());
-    // return 'Notification sent!';
+    // مسیرهای حفاظت شده ادمین
+Route::middleware(['auth:sanctum', 'can:admin'])->group(function () {
+   
+    Route::get('/admin/courses/list', [CourseController::class, 'listCourses']); // 👈 مسیر جدید
+    Route::get('/admin/course/{slug}', [CourseController::class, 'show']);
 });
+Route::get('/test', function () {
+
+    $user = App\Models\User::first();
+    $user->notify(new App\Notifications\TaskNotification());
+     return 'Notification sent!';
+});
+

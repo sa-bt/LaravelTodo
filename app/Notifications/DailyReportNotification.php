@@ -75,7 +75,7 @@ class DailyReportNotification extends Notification implements ShouldQueue
         return (new WebPushMessage)
             ->title($this->title)
             ->body($this->body)
-            ->icon($this->icon)
+            // ->icon($this->icon)
             ->tag($this->tag)
             ->data([
                 'url' => $this->url,

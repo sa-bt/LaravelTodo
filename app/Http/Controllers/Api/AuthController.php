@@ -17,6 +17,7 @@ use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
 use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Validation\Rules\Password;
+use Illuminate\Support\Carbon;
 
 
 class AuthController extends Controller
@@ -65,8 +66,15 @@ class AuthController extends Controller
         $user  = Auth::user();
         $token = $user->createToken('api-token')->plainTextToken;
 
+        // 💡 اصلاح پاسخ: اطمینان از ارسال نقش (role) کاربر
+        // ما از متد toArray() استفاده می‌کنیم تا فیلدهای $hidden حذف شوند،
+        // اما فیلد role که در مدل به $hidden اضافه نشده، برگردانده می‌شود.
+        $userData = $user->toArray();
+        // مطمئن می‌شویم که فیلدهای حساس مثل password و verification_code برگردانده نشوند
+        unset($userData['verification_code'], $userData['verification_code_expires_at']);
+
         return $this->successResponse([
-            'user'  => $user,
+            'user'  => $userData, // 👈 آبجکت تمیز شده کاربر شامل role: 'admin' یا 'user'
             'token' => $token,
         ]);
     }
@@ -150,6 +158,8 @@ class AuthController extends Controller
             'name'                      => $v['name'],
             'email'                     => $v['email'],
             'password'                  => Hash::make($v['password']),
+            // 💡 در اینجا role به صورت پیش‌فرض 'user' خواهد بود
+            'role'                      => 'user', 
             // 💡 email_verified_at همچنان null است
             'verification_code'         => Hash::make($code),
             'verification_code_expires_at' => now()->addMinutes(2),
@@ -196,7 +206,7 @@ class AuthController extends Controller
         ];
         $v = trim($v);
         $v = preg_replace('/\s+/u', '', $v) ?? $v;
-        return strtr(strtoupper($v), $map);
+        return strtr(strupper($v), $map);
     }
     // در همان AuthController یا کنترلر مربوطه
     public function verifyOtp(Request $request): JsonResponse
@@ -234,8 +244,12 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token', ['*'])->plainTextToken;
 
+        // 💡 اصلاح پاسخ: اطمینان از ارسال نقش (role) کاربر
+        $userData = $user->toArray();
+        unset($userData['verification_code'], $userData['verification_code_expires_at']);
+
         return $this->successResponse([
-            'user'  => $user,
+            'user'  => $userData, // 👈 آبجکت تمیز شده کاربر شامل role: 'admin' یا 'user'
             'token' => $token,
         // 🚨 پیام فارسی را از آرایه data خارج کنید
         ], messageKey: 'تأیید ایمیل با موفقیت انجام شد. به سیستم وارد شدید.', code: 200);

@@ -21,7 +21,6 @@ class TaskNotification extends Notification
         return (new WebPushMessage)
             ->title('یادآوری تسک')
             ->body('یک تسک جدید برات اومده!')
-            ->icon('/icon-192x192.png')
             ->action('مشاهده', 'view_task');
     }
 

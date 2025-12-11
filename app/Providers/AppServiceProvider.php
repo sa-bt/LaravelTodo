@@ -8,7 +8,7 @@ use Illuminate\Support\ServiceProvider;
 use Illuminate\Support\Facades\Route;
 use App\Repositories\GoalRepository;
 use App\Repositories\WeekRepository;
-
+use Illuminate\Support\Facades\Gate;
 
 class AppServiceProvider extends ServiceProvider
 {
@@ -30,5 +30,10 @@ class AppServiceProvider extends ServiceProvider
         Route::prefix('api')
             ->group(base_path('routes/api.php'));
         // GoalWeek::observe(GoalWeekObserver::class);
+
+        Gate::define('admin', function ($user) {
+            // فرض می‌کنیم مدل User شما فیلد 'role' دارد
+            return $user->role === 'admin';
+        });
     }
 }

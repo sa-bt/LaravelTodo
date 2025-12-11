@@ -30,6 +30,7 @@ class User extends Authenticatable
         'task_reminder',
         'task_reminder_time',
         'per_task_progress',
+        'role',
     ];
 
     /**
@@ -52,6 +53,7 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'password' => 'hashed',
+            'role' => 'string',
         ];
     }
 

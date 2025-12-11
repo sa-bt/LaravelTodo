@@ -45,7 +45,6 @@ class GenericWebPush extends Notification implements ShouldQueue
         $msg = (new WebPushMessage)
             ->title($title)
             ->body($body)
-            ->icon($this->icon ?? '/icons/notification.png')
             ->data(['url' => $this->url ?? url('/')] + $this->meta)
             ->vibrate([100, 50, 100])
             ->options(['renotify' => true, 'dir' => 'rtl', 'lang' => 'fa-IR'])
