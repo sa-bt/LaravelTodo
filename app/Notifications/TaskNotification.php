@@ -20,6 +20,8 @@ class TaskNotification extends Notification
     {
         return (new WebPushMessage)
             ->title('یادآوری تسک')
+            ->icon('/pwa-192x192.png') // 👈 حتماً این رو ست کن
+            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
             ->body('یک تسک جدید برات اومده!')
             ->action('مشاهده', 'view_task');
     }
