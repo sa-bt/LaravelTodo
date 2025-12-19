@@ -16,7 +16,6 @@ class SendGoalReminders extends Command
 
     public function handle(): int
     {
-dump(9999);
         $now = now()->setTimezone(config('app.timezone')); // ⬅️ این خطو اضافه کن
         $currentTime = $now->format('H:i');              // HH:mm
         $today       = $now->toDateString();

@@ -75,7 +75,9 @@ class DailyReportNotification extends Notification implements ShouldQueue
         return (new WebPushMessage)
             ->title($this->title)
             ->body($this->body)
-            // ->icon($this->icon)
+            ->icon('/pwa-192x192.png') // 👈 حتماً این رو ست کن
+            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
+            
             ->tag($this->tag)
             ->data([
                 'url' => $this->url,

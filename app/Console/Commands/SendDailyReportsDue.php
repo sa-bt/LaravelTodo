@@ -30,8 +30,8 @@ class SendDailyReportsDue extends Command
             ->where('daily_report', true)
             ->whereNotNull('report_time')
             // اگر report_time نوع TIME است، whereTime عالی کار می‌کند
-            // ->whereTime('report_time', '>=', $start)
-            // ->whereTime('report_time', '<=', $end)
+            ->whereTime('report_time', '>=', $start)
+            ->whereTime('report_time', '<=', $end)
             ->select(['id', 'report_time'])
             ->orderBy('id') // (برای consistency در chunk پیشنهاد می‌شود)
             ->chunkById(200, function ($users) use ($today, $now) {

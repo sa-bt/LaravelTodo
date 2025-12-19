@@ -23,11 +23,7 @@ class GenericWebPush extends Notification implements ShouldQueue
 
     public function via(object $notifiable): array
     {
-        // اگر کاربر subscription ندارد، همچنان رکورد دیتابیسی ثبت شود
-        if (empty($this->channels)) {
-            return [WebPushChannel::class];
-        }
-        return $this->channels;
+        return [WebPushChannel::class];
     }
 
     // ذخیره در جدول notifications
@@ -41,10 +37,12 @@ class GenericWebPush extends Notification implements ShouldQueue
 
         $title = $rtlStart . $this->title . $rtlEnd;
         $body  = $rtlStart . $this->body  . $rtlEnd;
-        
+
         $msg = (new WebPushMessage)
             ->title($title)
             ->body($body)
+            ->icon('/pwa-192x192.png') // 👈 حتماً این رو ست کن
+            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
             ->data(['url' => $this->url ?? url('/')] + $this->meta)
             ->vibrate([100, 50, 100])
             ->options(['renotify' => true, 'dir' => 'rtl', 'lang' => 'fa-IR'])

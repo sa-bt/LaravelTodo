@@ -10,10 +10,15 @@ use App\Http\Controllers\Api\PushSubscriptionController;
 use App\Http\Controllers\Api\TaskController;
 use App\Http\Controllers\Api\CourseController;
 use App\Http\Controllers\Api\UserSettingController;
+use App\Models\Task;
 use App\Models\User;
+use App\Notifications\GenericWebPush;
 use App\Notifications\TaskNotification;
+use App\Services\NotificationMessageBuilder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:15,1');
 Route::post('/verify-otp', [AuthController::class, 'verifyOtp']);
@@ -39,7 +44,7 @@ Route::middleware('auth:sanctum')->group(function () {
 });
 
 Route::post('/captcha/new', [CaptchaController::class, 'new'])
-    ->middleware('throttle:30,1'); // حداکثر ۳۰ بار در دقیقه
+    ->middleware('throttle:10,1'); // حداکثر ۳۰ بار در دقیقه
 
 // بررسی پاسخ
 Route::post('/captcha/verify', [CaptchaController::class, 'verify'])
@@ -52,8 +57,62 @@ Route::middleware(['auth:sanctum', 'can:admin'])->group(function () {
 });
 Route::get('/test', function () {
 
-    $user = App\Models\User::first();
-    $user->notify(new App\Notifications\TaskNotification());
-     return 'Notification sent!';
+       $now = now()->setTimezone(config('app.timezone')); // ⬅️ این خطو اضافه کن
+        $currentTime = $now->format('H:i');              // HH:mm
+        $today       = $now->toDateString();
+        $ttlSeconds  = 70;                               // کمی بیشتر از یک دقیقه برای پوشش جیتِر
+        $onePerGoal  = (bool) (config('notifications.reminders.one_per_goal', true)); // true: فقط یکی برای هر goal
+
+        Log::info("Goal reminder scan at {$currentTime}", ['today' => $today, 'one_per_goal' => $onePerGoal]);
+
+        $base = Goal::query()
+            ->where('send_task_reminder', true)
+            ->whereDoesntHave('children')                   // فقط لیف
+            ->whereTime('reminder_time', $currentTime)      // دقیقه‌ی فعلی
+            // یوزری که subscription دارد (prefilter برای کاهش کار اضافه)
+            ->whereHas('user.pushSubscriptions')
+            ->with([
+                'user',
+                'tasks' => function ($q) use ($today) {
+                    $q->whereDate('day', $today)
+                        ->where('is_done', false);
+                },
+            ])
+            ->orderBy('id'); // برای chunkById
+
+        $dispatched = 0;
+
+        $base->chunkById(200, function ($goals) use ($today, $currentTime, $ttlSeconds, $onePerGoal, &$dispatched) {
+            foreach ($goals as $goal) {
+                // اگر تسک ناتمام امروز ندارد، ادامه
+                if ($goal->tasks->isEmpty() || !$goal->user) {
+                    continue;
+                }
+
+                // dedup به‌ازای goal و دقیقه — اتمیک (return true فقط اگر برای اولین بار ست شود)
+                $cacheKey = "reminder:goal:{$goal->id}:{$today}:{$currentTime}";
+                if (!Cache::add($cacheKey, 1, now()->addSeconds($ttlSeconds))) {
+                    // قبلاً در همین دقیقه دیسپچ شده
+                    continue;
+                }
+
+                // ارسال یک جاب یا برای همه‌ی تسک‌های امروز
+                if ($onePerGoal) {
+                    $task = $goal->tasks->first();
+                    dispatch(new GoalReminderJob($task->id, $goal->user->id));
+                    $dispatched++;
+                } else {
+                    foreach ($goal->tasks as $task) {
+                        dispatch(new GoalReminderJob($task->id, $goal->user->id));
+                        $dispatched++;
+                    }
+                }
+            }
+        });
+
+        $this->info("Dispatched {$dispatched} reminder jobs at {$currentTime}");
+        Log::info("Goal reminder dispatch completed", ['dispatched' => $dispatched, 'at' => $currentTime]);
+
+        return Command::SUCCESS;
 });
 

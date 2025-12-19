@@ -55,6 +55,7 @@ class GoalReminderJob implements ShouldQueue
 
     public function handle(): void
     {
+        Log::emergency("--- جاب شروع شد! taskId: {$this->taskId} ---");
         $task = Task::with(['goal' => fn($q) => $q->withCount('children')])->find($this->taskId);
         $user = User::find($this->userId);
 
@@ -85,8 +86,7 @@ class GoalReminderJob implements ShouldQueue
         }
 
         // ✅ پیام داینامیک
-        $builder = app(NotificationMessageBuilder::class);
-        $message = $builder->build($user, $task);
+        $message = \App\Services\NotificationMessageBuilder::build($task);
 
         $title = $this->title ?? "یادآور تسک";
         $body  = $this->body  ?? $message;
