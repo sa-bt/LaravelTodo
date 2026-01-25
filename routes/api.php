@@ -3,6 +3,7 @@
 use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CaptchaController;
+use App\Http\Controllers\Api\ContactController;
 use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\GoalController;
@@ -46,10 +47,14 @@ Route::post('/captcha/verify', [CaptchaController::class, 'verify'])
     ->middleware('throttle:60,1');
     // مسیرهای حفاظت شده ادمین
 Route::middleware(['auth:sanctum', 'can:admin'])->group(function () {
-   
+
     Route::get('/admin/courses/list', [CourseController::class, 'listCourses']); // 👈 مسیر جدید
     Route::get('/admin/course/{slug}', [CourseController::class, 'show']);
 });
+
+Route::middleware(['throttle:3,1', 'block.spam']) // هم ریت لیمیت و هم هانی‌پات
+->post('/contact', [ContactController::class, 'store']);
+
 Route::get('/test', function () {
 
     $user = App\Models\User::first();
