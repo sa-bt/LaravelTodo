@@ -2,12 +2,11 @@
 
 namespace App\Console\Commands;
 
-use App\Jobs\SendDailyReportNotification;
+use App\Jobs\SendDailyReportNotificationJob;
 use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Cache;
-use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Log;
 
 class SendDailyReportsDue extends Command
 {
@@ -16,42 +15,36 @@ class SendDailyReportsDue extends Command
 
     public function handle(): int
     {
-        // از timezone برنامه استفاده کن
         $now = Carbon::now(config('app.timezone', 'UTC'));
-
-        // بازه‌ی تحمل ±۱ دقیقه با ثانیه
         $start = $now->copy()->subMinute()->format('H:i:s');
-        $end   = $now->copy()->addMinute()->format('H:i:s');
+        $end = $now->copy()->addMinute()->format('H:i:s');
+        $currentTime = $now->format('H:i');
 
-        $today = $now->toDateString();
+        Log::info("DailyReport scan started", ['time' => $currentTime]);
 
-        // فقط ستون‌های لازم
+        $dispatched = 0;
+
         User::query()
             ->where('daily_report', true)
             ->whereNotNull('report_time')
-            // اگر report_time نوع TIME است، whereTime عالی کار می‌کند
             ->whereTime('report_time', '>=', $start)
             ->whereTime('report_time', '<=', $end)
-            ->select(['id', 'report_time'])
-            ->orderBy('id') // (برای consistency در chunk پیشنهاد می‌شود)
-            ->chunkById(200, function ($users) use ($today, $now) {
+            ->select(['id'])
+            ->orderBy('id')
+            ->chunkById(200, function ($users) use (&$dispatched) {
                 foreach ($users as $user) {
-                    // dd($user->report_time, $now->format('H:i:s'));
-                    $key = "daily_report_sent:{$user->id}:{$today}";
-
-                    // ست کردن اتمیک: اگر وجود ندارد، بساز و همزمان dispatch کن
-                    $set = Cache::add($key, true, $now->copy()->endOfDay());
-                    if (!$set) {
-                        // قبلاً امروز ارسال شده
-                        continue;
-                    }
-
-                    // حالا امن dispatch کن
-                    SendDailyReportNotification::dispatch($user->id);
+                    SendDailyReportNotificationJob::dispatch($user->id);
+                    $dispatched++;
                 }
             });
 
-        $this->info('reports:send-due checked');
+        $this->info("Dispatched {$dispatched} daily report jobs at {$currentTime}");
+
+        Log::info("DailyReport scan completed", [
+            'dispatched' => $dispatched,
+            'time' => $currentTime,
+        ]);
+
         return self::SUCCESS;
     }
 }

@@ -17,8 +17,8 @@ class GenericWebPush extends Notification implements ShouldQueue
         public string $body,
         public ?string $url = null,
         public array $meta = [],
-        public ?string $icon = '/icons/notification.png',
-        public ?string $tag  = null,
+        public ?string $icon = '/pwa-192x192.png',
+        public ?string $tag = null,
     ) {}
 
     public function via(object $notifiable): array
@@ -26,33 +26,39 @@ class GenericWebPush extends Notification implements ShouldQueue
         return [WebPushChannel::class];
     }
 
-    // ذخیره در جدول notifications
-
-    // پیام Web Push
     public function toWebPush(object $notifiable, object $notification): WebPushMessage
     {
-        // کاراکتر کنترل برای شروع و پایان متن راست‌به‌چپ
-        $rtlStart = "\u{202B}"; // Right-to-left embedding
-        $rtlEnd   = "\u{202C}"; // Pop directional formatting
+        // ✅ title: بررسی انگلیسی بودن
+        $title = $this->title;
+        if (preg_match('/[a-zA-Z]/', $title)) {
+            // شامل انگلیسی → LRI
+            $title = "\u{2066}" . $title . "\u{2069}";
+        } else {
+            // فقط فارسی → RLI
+            $title = "\u{2067}" . $title . "\u{2069}";
+        }
 
-        $title = $rtlStart . $this->title . $rtlEnd;
-        $body  = $rtlStart . $this->body  . $rtlEnd;
+        // ✅ body: فقط فارسی → RLI
+        $body = "\u{2067}" . $this->body . "\u{2069}";
+
+        $data = array_merge([
+            'url' => $this->url ?? url('/'),
+            'type' => 'generic',
+        ], $this->meta);
 
         $msg = (new WebPushMessage)
             ->title($title)
             ->body($body)
-            ->icon('/pwa-192x192.png') // 👈 حتماً این رو ست کن
-            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
-            ->data(['url' => $this->url ?? url('/')] + $this->meta)
+            ->icon($this->icon)
+            ->tag($this->tag ?? 'todo-notification')
+            ->data($data)
             ->vibrate([100, 50, 100])
-            ->options(['renotify' => true, 'dir' => 'rtl', 'lang' => 'fa-IR'])
-            ->action('باز کردن', 'open_app');
-
-        if ($this->tag) {
-            $msg->tag($this->tag);
-        } else {
-            $msg->tag(md5($this->title . $this->body . ($this->url ?? '')));
-        }
+            ->options([
+                'dir' => 'rtl',
+                'lang' => 'fa-IR',
+                'renotify' => true,
+                'requireInteraction' => false,
+            ]);
 
         return $msg;
     }

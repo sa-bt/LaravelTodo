@@ -6,30 +6,28 @@ use Illuminate\Foundation\Http\FormRequest;
 
 class StoreContactRequest extends FormRequest
 {
-    public function authorize(): bool
-    {
-        return true;
-    }
-
     public function rules(): array
     {
         return [
-            'name' => ['required', 'string', 'max:255', 'regex:/^[ا-یa-zA-Z\s]+$/'], // فقط حروف و فاصله
-            'email' => ['required', 'email:rfc,dns', 'max:255'], // بررسی ساختار و وجود دامنه
-            'message' => ['required', 'string', 'min:10', 'max:2000'], // حداقل و حداکثر طول
-            'website' => ['sometimes'], // برای هانی‌پات
-            'captcha_id'     => ['required', 'string', 'size:32'],   // همون id که از /api/captcha/new گرفتی (16 بایت hex)
-            'captcha_answer' => ['required', 'string', 'max:16'],
+            'name' => ['required', 'string', 'min:3', 'max:255'],
+            'email' => ['required', 'email', 'max:255'],
+            'message' => ['required', 'string', 'min:10'],
+            'captcha_id' => ['required', 'string'],
+            'captcha_answer' => ['required', 'string'],
         ];
     }
 
-// اضافه کردن پیام‌های خطای اختصاصی برای امنیت
     public function messages(): array
     {
+        // کلیدهای ترجمه برگردانید، نه متن فارسی!
         return [
-            'name.regex' => 'نام وارد شده معتبر نیست.',
-            'message.min' => 'پیام خیلی کوتاه است (حداقل ۱۰ کاراکتر).',
-            'captcha_answer.required' => 'کد امنیتی وارد نشده است.',
+            'name.required' => 'errors.name_required',
+            'name.min' => 'errors.name_min',
+            'email.required' => 'errors.email_required',
+            'email.email' => 'errors.email_invalid',
+            'message.required' => 'errors.message_required',
+            'message.min' => 'errors.message_min',
+            'captcha_answer.required' => 'errors.captcha_required',
         ];
     }
 }

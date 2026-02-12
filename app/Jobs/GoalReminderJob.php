@@ -23,12 +23,11 @@ class GoalReminderJob implements ShouldQueue
     #[WithoutRelations] public int $userId;
 
     public ?string $title = null;
-    public ?string $body  = null;
-    public ?string $url   = null;
-    public ?string $icon  = null;
-    public ?string $tag   = null;
-    public array   $meta  = [];
-    public array   $channels = [];
+    public ?string $body = null;
+    public ?string $url = null;
+    public ?string $icon = null;
+    public ?string $tag = null;
+    public array $meta = [];
     public ?string $dedupKey = null;
     public int $dedupTtl = 70;
 
@@ -40,13 +39,12 @@ class GoalReminderJob implements ShouldQueue
         $this->taskId = $taskId;
         $this->userId = $userId;
 
-        $this->title    = $options['title']    ?? null;
-        $this->body     = $options['body']     ?? null;
-        $this->url      = $options['url']      ?? null;
-        $this->icon     = $options['icon']     ?? null;
-        $this->tag      = $options['tag']      ?? null;
-        $this->meta     = $options['meta']     ?? [];
-        $this->channels = $options['channels'] ?? [];
+        $this->title = $options['title'] ?? null;
+        $this->body = $options['body'] ?? null;
+        $this->url = $options['url'] ?? null;
+        $this->icon = $options['icon'] ?? null;
+        $this->tag = $options['tag'] ?? null;
+        $this->meta = $options['meta'] ?? [];
         $this->dedupKey = $options['dedupKey'] ?? null;
         if (isset($options['dedupTtl']) && is_int($options['dedupTtl'])) {
             $this->dedupTtl = $options['dedupTtl'];
@@ -55,12 +53,13 @@ class GoalReminderJob implements ShouldQueue
 
     public function handle(): void
     {
-        Log::emergency("--- جاب شروع شد! taskId: {$this->taskId} ---");
+        Log::info("--- GoalReminderJob started: taskId={$this->taskId} ---");
+
         $task = Task::with(['goal' => fn($q) => $q->withCount('children')])->find($this->taskId);
         $user = User::find($this->userId);
 
         if (!$task || !$user || !$task->goal) {
-            Log::warning("Reminder skip: missing models (taskId={$this->taskId}, userId={$this->userId})");
+            Log::warning("Reminder skip: missing models", ['taskId' => $this->taskId, 'userId' => $this->userId]);
             return;
         }
 
@@ -85,37 +84,42 @@ class GoalReminderJob implements ShouldQueue
             return;
         }
 
-        // ✅ پیام داینامیک
-        $message = \App\Services\NotificationMessageBuilder::build($task);
+        // ─── Build Content ───
+        $message = NotificationMessageBuilder::build($task);
 
-        $title = $this->title ?? "یادآور تسک";
-        $body  = $this->body  ?? $message;
-        $url   = $this->url   ?? '/tasks/'.$task->id;
-        $icon  = $this->icon  ?? '/icons/notification.png';
-        $tag   = $this->tag   ?? "task-reminder-{$task->id}-{$task->day}";
-        $meta  = array_merge([
-            'type'    => 'task_reminder',
+        // ✅ title: فقط نام هدف
+        $title = $this->title ?? $task->goal->title;
+
+        // ✅ body: پیام بدون نام هدف
+        $body = $this->body ?? $message;
+
+        $url = $this->url ?? '/day';
+        $icon = $this->icon ?? '/pwa-192x192.png';
+        $tag = $this->tag ?? "reminder-{$task->goal_id}-{$task->day}";
+
+        $meta = array_merge([
+            'type' => 'task_reminder',
             'goal_id' => $task->goal_id,
             'task_id' => $task->id,
-            'day'     => $task->day,
+            'day' => $task->day,
         ], $this->meta);
 
         try {
             $notification = new GenericWebPush(
                 title: $title,
-                body:  $body,
-                url:   $url,
-                meta:  $meta,
-                icon:  $icon,
-                tag:   $tag,
+                body: $body,
+                url: $url,
+                meta: $meta,
+                icon: $icon,
+                tag: $tag,
             );
 
             $user->notify($notification);
             Cache::put($dedupKey, 1, now()->addSeconds($this->dedupTtl));
 
-            Log::info("Reminder sent for Task {$task->id} to User {$user->id}");
+            Log::info("✅ Reminder sent", ['taskId' => $task->id, 'goalTitle' => $task->goal->title, 'userId' => $user->id]);
         } catch (\Throwable $e) {
-            Log::error("Reminder failed (task {$task->id}): " . $e->getMessage());
+            Log::error("❌ Reminder failed", ['taskId' => $task->id, 'error' => $e->getMessage()]);
             throw $e;
         }
     }

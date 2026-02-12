@@ -20,38 +20,29 @@ class DailyReportNotification extends Notification implements ShouldQueue
         public ?int $percent = null,
         public ?int $remaining = null,
         public array $meta = [],
-        public ?string $icon = '/webpush-icons/report.png',
+        public ?string $icon = '/pwa-192x192.png',
         public ?string $tag = 'daily-report',
     ) {}
 
-    /**
-     * 🔹 کانال‌های ارسالی
-     */
     public function via($notifiable): array
     {
         return [WebPushChannel::class, 'database', 'mail'];
     }
 
-    /**
-     * 🔹 ذخیره در جدول notifications
-     */
     public function toDatabase($notifiable): array
     {
         return [
             'title' => $this->title,
-            'body'  => $this->body,
-            'url'   => $this->url,
-            'icon'  => $this->icon,
-            'tag'   => $this->tag,
-            'meta'  => $this->meta,
+            'body' => $this->body,
+            'url' => $this->url,
+            'icon' => $this->icon,
+            'tag' => $this->tag,
+            'meta' => $this->meta,
             'percent' => $this->percent,
             'remaining' => $this->remaining,
         ];
     }
 
-    /**
-     * 🔹 ارسال ایمیل با قالب فارسی
-     */
     public function toMail($notifiable): MailMessage
     {
         return (new MailMessage)
@@ -67,23 +58,30 @@ class DailyReportNotification extends Notification implements ShouldQueue
             ->from(config('mail.from.address'), config('mail.from.name'));
     }
 
-    /**
-     * 🔹 اعلان وب‌پوش
-     */
     public function toWebPush($notifiable, $notification): WebPushMessage
     {
+        // ✅ RTL برای فارسی
+        $title = "\u{2067}" . $this->title . "\u{2069}";
+        $body = "\u{2067}" . $this->body . "\u{2069}";
+
         return (new WebPushMessage)
-            ->title($this->title)
-            ->body($this->body)
-            ->icon('/pwa-192x192.png') // 👈 حتماً این رو ست کن
-            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
-            
+            ->title($title)
+            ->body($body)
+            ->icon($this->icon)
             ->tag($this->tag)
+            ->vibrate([100, 50, 100])
             ->data([
-                'url' => $this->url,
+                'url' => $this->url ?? url('/day'),
                 'meta' => $this->meta,
                 'percent' => $this->percent,
                 'remaining' => $this->remaining,
+            ])
+            ->action('باز کردن', 'open')
+            ->options([
+                'dir' => 'rtl',
+                'lang' => 'fa-IR',
+                'renotify' => false,
+                'requireInteraction' => false,
             ]);
     }
 }
