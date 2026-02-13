@@ -52,7 +52,7 @@ Route::middleware(['auth:sanctum', 'can:admin'])->group(function () {
     Route::get('/admin/course/{slug}', [CourseController::class, 'show']);
 });
 
-Route::middleware(['throttle:30,1', 'block.spam']) // هم ریت لیمیت و هم هانی‌پات
+Route::middleware(['throttle:3,1', 'block.spam']) // هم ریت لیمیت و هم هانی‌پات
 ->post('/contact', [ContactController::class, 'store']);
 
 Route::get('/test', function () {
