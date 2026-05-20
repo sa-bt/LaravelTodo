@@ -60,13 +60,10 @@ class DailyReportNotification extends Notification implements ShouldQueue
 
     public function toWebPush($notifiable, $notification): WebPushMessage
     {
-        // ✅ RTL برای فارسی
-        $title = "\u{2067}" . $this->title . "\u{2069}";
-        $body = "\u{2067}" . $this->body . "\u{2069}";
 
         return (new WebPushMessage)
-            ->title($title)
-            ->body($body)
+            ->title($this->title)
+            ->body($this->body)
             ->icon($this->icon)
             ->tag($this->tag)
             ->vibrate([100, 50, 100])

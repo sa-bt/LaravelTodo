@@ -57,7 +57,8 @@ Route::middleware(['throttle:3,1', 'block.spam']) // هم ریت لیمیت و �
 
 Route::get('/test', function () {
 
-    $user = App\Models\User::first();
+    $user = App\Models\User::find(1);
+
     $user->notify(new App\Notifications\TaskNotification());
      return 'Notification sent!';
 });

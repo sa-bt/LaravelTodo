@@ -84,21 +84,33 @@ class TaskController extends Controller
             );
         }
 
-        // 2️⃣ تبدیل تاریخ شمسی به میلادی
-        $data['day'] = \Morilog\Jalali\Jalalian::fromFormat('Y-m-d', $data['day'])->toCarbon();
+        /*
+        |--------------------------------------------------------------------------
+        | تعیین تاریخ مبنای محاسبه پیشرفت
+        |--------------------------------------------------------------------------
+        | اگر day در درخواست آمده باشد، یعنی کاربر در حال تغییر تاریخ تسک است.
+        | در غیر این صورت، مثل Toggle وضعیت انجام‌شدن، از تاریخ فعلی خود تسک
+        | برای محاسبه پیشرفت استفاده می‌کنیم.
+        */
+        if (array_key_exists('day', $data)) {
+            $data['day'] = \Morilog\Jalali\Jalalian::fromFormat('Y-m-d', $data['day'])->toCarbon();
+            $progressDay = $data['day'];
+        } else {
+            $progressDay = $task->day;
+        }
 
-        // 3️⃣ گرفتن وضعیت پیشرفت قبل از تغییر
+        // 2️⃣ گرفتن وضعیت پیشرفت قبل از تغییر
         $service = new \App\Services\ProgressMessageService();
-        $progressBefore = $service->getUserProgressForDate($user->id, $data['day']);
+        $progressBefore = $service->getUserProgressForDate($user->id, $progressDay);
         $beforePercent  = $progressBefore['percent'];
 
-        // 4️⃣ انجام آپدیت تسک
+        // 3️⃣ انجام آپدیت تسک
         $oldStatus = $task->is_done;
         $task = $this->repository->update($id, $data);
         $newStatus = $task->is_done;
 
-        // 5️⃣ گرفتن وضعیت بعد از تغییر
-        $progressAfter = $service->getUserProgressForDate($user->id, $data['day']);
+        // 4️⃣ گرفتن وضعیت بعد از تغییر
+        $progressAfter = $service->getUserProgressForDate($user->id, $progressDay);
         $afterPercent  = $progressAfter['percent'];
         $remaining     = $progressAfter['remaining'];
 

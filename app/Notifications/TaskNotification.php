@@ -3,14 +3,15 @@
 namespace App\Notifications;
 
 use Illuminate\Bus\Queueable;
+use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
 use NotificationChannels\WebPush\WebPushChannel;
 use NotificationChannels\WebPush\WebPushMessage;
 
-class TaskNotification extends Notification
+class TaskNotification extends Notification implements ShouldQueue
 {
-    
 
+use Queueable;
     public function via(object $notifiable): array
     {
         return [WebPushChannel::class]; // فقط WebPush
@@ -21,7 +22,7 @@ class TaskNotification extends Notification
         return (new WebPushMessage)
             ->title('یادآوری تسک')
             ->icon('/pwa-192x192.png') // 👈 حتماً این رو ست کن
-            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
+//            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
             ->body('یک تسک جدید برات اومده!')
             ->action('مشاهده', 'view_task');
     }

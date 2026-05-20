@@ -24,10 +24,10 @@ class UpdateTaskRequest extends FormRequest
     {
          return [
         'title' => ['nullable', 'string', 'max:255'],
-        'day' => ['required', 'date'],
+        'day' => ['sometimes', 'date'],
         'is_done' => ['boolean'],
         'for' => ['nullable', 'numeric', 'max:365', 'min:1'],
-        
+
     ];
     }
 
