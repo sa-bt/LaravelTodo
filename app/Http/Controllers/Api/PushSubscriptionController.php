@@ -1,39 +1,32 @@
 <?php
+
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
 class PushSubscriptionController extends Controller
 {
-    
-    public function store(Request $request)
+    public function store(Request $request): JsonResponse
     {
-        $user = Auth::user();
+        $validated = $request->validate([
+            'subscription.endpoint' => ['required', 'string'],
+            'subscription.keys.p256dh' => ['required', 'string'],
+            'subscription.keys.auth' => ['required', 'string'],
+        ]);
 
-        $subscription = $request->input('subscription', []);
+        $subscription = $validated['subscription'];
 
-        $endpoint = $subscription['endpoint'] ?? null;
-        $keys = $subscription['keys'] ?? [];
-
-        $p256dh = $keys['p256dh'] ?? null;
-        $auth = $keys['auth'] ?? null;
-
-        // اعتبارسنجی داده‌ها
-        if (!$endpoint || !$p256dh || !$auth) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Subscription data invalid'
-            ], 422);
-        }
-
-        // ثبت یا بروزرسانی subscription
-        $user->updatePushSubscription($endpoint, $p256dh, $auth);
+        $request->user()->updatePushSubscription(
+            $subscription['endpoint'],
+            $subscription['keys']['p256dh'],
+            $subscription['keys']['auth']
+        );
 
         return response()->json([
             'success' => true,
-            'message' => 'Push subscription saved successfully'
+            'message' => 'Push subscription saved successfully',
         ]);
     }
-    }
+}

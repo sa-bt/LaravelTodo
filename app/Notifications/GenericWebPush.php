@@ -19,32 +19,73 @@ class GenericWebPush extends Notification implements ShouldQueue
         public array $meta = [],
         public ?string $icon = '/pwa-192x192.png',
         public ?string $tag = null,
+        public bool $persisted = true,
     ) {}
 
     public function via(object $notifiable): array
     {
-        return [WebPushChannel::class];
+        $channels = [
+            WebPushChannel::class,
+        ];
+
+        if ($this->persisted) {
+            $channels[] = 'database';
+        }
+
+        return $channels;
+    }
+
+    public function toDatabase(object $notifiable): array
+    {
+        return [
+            'title' => $this->title,
+            'body' => $this->body,
+            'url' => $this->url ?? '/',
+            'icon' => $this->icon,
+            'tag' => $this->resolvedTag(),
+            'type' => $this->type(),
+            'meta' => $this->meta,
+        ];
+    }
+
+    public function toArray(object $notifiable): array
+    {
+        return $this->toDatabase($notifiable);
     }
 
     public function toWebPush(object $notifiable, object $notification): WebPushMessage
     {
         $data = array_merge([
-            'url' => $this->url ?? url('/'),
-            'type' => 'generic',
+            '__kind' => 'webpush',
+            'persisted' => $this->persisted,
+            'notification_id' => $this->persisted ? $this->id : null,
+            'url' => $this->url ?? '/',
+            'type' => $this->type(),
         ], $this->meta);
 
         return (new WebPushMessage)
             ->title($this->title)
             ->body($this->body)
             ->icon($this->icon)
-            ->tag($this->tag ?? 'todo-notification')
+            ->tag($this->resolvedTag())
             ->data($data)
             ->vibrate([100, 50, 100])
+            ->action('باز کردن', 'open')
             ->options([
                 'dir' => 'rtl',
                 'lang' => 'fa-IR',
                 'renotify' => true,
                 'requireInteraction' => false,
             ]);
+    }
+
+    private function type(): string
+    {
+        return $this->meta['type'] ?? 'generic';
+    }
+
+    private function resolvedTag(): string
+    {
+        return $this->tag ?: str(config('app.name'))->slug()->toString() . '-notification';
     }
 }

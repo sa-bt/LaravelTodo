@@ -5,7 +5,6 @@ namespace App\Notifications;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Notifications\Notification;
-use Illuminate\Notifications\Messages\MailMessage;
 use NotificationChannels\WebPush\WebPushChannel;
 use NotificationChannels\WebPush\WebPushMessage;
 
@@ -16,63 +15,67 @@ class DailyReportNotification extends Notification implements ShouldQueue
     public function __construct(
         public string $title,
         public string $body,
-        public ?string $url = null,
+        public ?string $url = '/app/day',
         public ?int $percent = null,
         public ?int $remaining = null,
         public array $meta = [],
         public ?string $icon = '/pwa-192x192.png',
-        public ?string $tag = 'daily-report',
+        public ?string $tag = null,
+        public bool $persisted = true,
     ) {}
 
-    public function via($notifiable): array
+    public function via(object $notifiable): array
     {
-        return [WebPushChannel::class, 'database', 'mail'];
+        $channels = [
+            WebPushChannel::class,
+        ];
+
+        if ($this->persisted) {
+            $channels[] = 'database';
+        }
+
+        return $channels;
     }
 
-    public function toDatabase($notifiable): array
+    public function toDatabase(object $notifiable): array
     {
         return [
             'title' => $this->title,
             'body' => $this->body,
-            'url' => $this->url,
+            'url' => $this->url ?? '/app/day',
             'icon' => $this->icon,
-            'tag' => $this->tag,
+            'tag' => $this->resolvedTag(),
+            'type' => $this->type(),
             'meta' => $this->meta,
             'percent' => $this->percent,
             'remaining' => $this->remaining,
         ];
     }
 
-    public function toMail($notifiable): MailMessage
+    public function toArray(object $notifiable): array
     {
-        return (new MailMessage)
-            ->view('emails.daily_report', [
-                'user' => $notifiable,
-                'title' => $this->title,
-                'body' => $this->body,
-                'url' => $this->url,
-                'percent' => $this->percent,
-                'remaining' => $this->remaining,
-            ])
-            ->subject('📊 گزارش پیشرفت روزانه')
-            ->from(config('mail.from.address'), config('mail.from.name'));
+        return $this->toDatabase($notifiable);
     }
 
-    public function toWebPush($notifiable, $notification): WebPushMessage
+    public function toWebPush(object $notifiable, object $notification): WebPushMessage
     {
+        $data = array_merge([
+            '__kind' => 'webpush',
+            'persisted' => $this->persisted,
+            'notification_id' => $this->persisted ? $this->id : null,
+            'url' => $this->url ?? '/app/day',
+            'type' => $this->type(),
+            'percent' => $this->percent,
+            'remaining' => $this->remaining,
+        ], $this->meta);
 
         return (new WebPushMessage)
             ->title($this->title)
             ->body($this->body)
             ->icon($this->icon)
-            ->tag($this->tag)
+            ->tag($this->resolvedTag())
+            ->data($data)
             ->vibrate([100, 50, 100])
-            ->data([
-                'url' => $this->url ?? url('/day'),
-                'meta' => $this->meta,
-                'percent' => $this->percent,
-                'remaining' => $this->remaining,
-            ])
             ->action('باز کردن', 'open')
             ->options([
                 'dir' => 'rtl',
@@ -80,5 +83,15 @@ class DailyReportNotification extends Notification implements ShouldQueue
                 'renotify' => false,
                 'requireInteraction' => false,
             ]);
+    }
+
+    private function type(): string
+    {
+        return $this->meta['type'] ?? 'daily_report';
+    }
+
+    private function resolvedTag(): string
+    {
+        return $this->tag ?: str(config('app.name'))->slug()->toString() . '-daily-report';
     }
 }

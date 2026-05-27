@@ -2,9 +2,10 @@
 
 namespace App\Services;
 
-use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Arr;
 use Carbon\Carbon;
+use Illuminate\Support\Arr;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
 
 class ProgressMessageService
 {
@@ -13,96 +14,143 @@ class ProgressMessageService
     public function __construct()
     {
         $path = resource_path('lang/fa/progress_messages.json');
-        $this->messages = json_decode(file_get_contents($path), true) ?? [];
+
+        $this->messages = File::exists($path)
+            ? json_decode(File::get($path), true) ?? []
+            : [];
     }
 
-    /**
-     * محاسبه درصد پیشرفت کاربر برای یک تاریخ خاص
-     */
     public function getUserProgressForDate(int $userId, string|Carbon $date): array
     {
-        $date = $date instanceof Carbon ? $date->toDateString() : Carbon::parse($date)->toDateString();
+        $date = $date instanceof Carbon
+            ? $date->toDateString()
+            : Carbon::parse($date)->toDateString();
 
-        $agg = DB::table('tasks')
+        $aggregate = DB::table('tasks')
             ->join('goals', 'tasks.goal_id', '=', 'goals.id')
             ->where('goals.user_id', $userId)
             ->whereDate('tasks.day', $date)
-            ->selectRaw('COUNT(*) as total, SUM(CASE WHEN tasks.is_done = 1 THEN 1 ELSE 0 END) as done')
+            ->whereNotExists(function ($query) {
+                $query->selectRaw(1)
+                    ->from('goals as child_goals')
+                    ->whereColumn('child_goals.parent_id', 'goals.id');
+            })
+            ->selectRaw('COUNT(*) as total')
+            ->selectRaw('SUM(CASE WHEN tasks.is_done = 1 THEN 1 ELSE 0 END) as done')
             ->first();
 
-        $total = (int) ($agg->total ?? 0);
-        $done  = (int) ($agg->done  ?? 0);
-
-        $percent   = $total > 0 ? (int) round(($done / $total) * 100) : 0;
+        $total = (int) ($aggregate->total ?? 0);
+        $done = (int) ($aggregate->done ?? 0);
         $remaining = max($total - $done, 0);
+        $percent = $total > 0 ? (int) round(($done / $total) * 100) : 0;
 
-        return compact('total', 'done', 'percent', 'remaining') + ['date' => $date];
+        return [
+            'total' => $total,
+            'done' => $done,
+            'percent' => $percent,
+            'remaining' => $remaining,
+            'date' => $date,
+        ];
     }
 
-    /**
-     * ساخت پیام داینامیک بر اساس وضعیت کاربر و جهت تغییر
-     * خروجی: ['text' => string, 'duration' => int]
-     */
     public function buildMessage(
         int $percent,
         int $remaining,
         string $context = 'report',
         ?array $extras = []
     ): array {
-        $direction = $extras['direction'] ?? 'forward'; // forward | backward
+        $direction = $extras['direction'] ?? 'forward';
 
-        // 🔹 حالت پسرفت (تسک لغو شده)
         if ($direction === 'backward') {
-            $regressBank = $this->messages['regress'] ?? [];
-            if (!empty($regressBank)) {
-                $msg = Arr::random($regressBank);
-                $msg = str_replace(['%{percent}', '%{remaining}'], [$percent, $remaining], $msg);
-                return $this->formatMessage($msg);
+            $message = $this->randomMessage('regress', $percent, $remaining);
+
+            if ($message) {
+                return $this->formatMessage($message);
             }
         }
 
-        // 🔹 حالت پیشرفت (تسک انجام شده)
-        if ($percent == 100) $key = 'full';
-        elseif ($percent >= 70) $key = 'high';
-        elseif ($percent >= 40) $key = 'mid';
-        else $key = 'low';
+        $levelKey = $this->resolveLevelKey($percent);
 
-        $bank = $this->messages[$key] ?? [];
-        $message = str_replace(
-            ['%{percent}', '%{remaining}'],
-            [$percent, $remaining],
-            Arr::random($bank)
-        );
+        $message = $this->randomMessage($levelKey, $percent, $remaining)
+            ?: $this->fallbackProgressMessage($percent, $remaining);
 
-        // افزودن context (مثلاً report یا reminder)
-        $contextBank = $this->messages[$context] ?? [];
-        if (!empty($contextBank)) {
-            $prefix = str_replace(
-                ['%{percent}', '%{remaining}'],
-                [$percent, $remaining],
-                Arr::random($contextBank)
-            );
-            $message = $prefix . ' ' . $message;
+        $contextMessage = $this->randomMessage($context, $percent, $remaining);
+
+        if ($contextMessage) {
+            $message = $contextMessage . ' ' . $message;
         }
 
-        // ساخت جمله نهایی با opener/closer
-        $openers = ["آفرین 👏", "دمت گرم 💪", "ادامه بده 🌟", "هیچ‌چیز نمی‌تونه جلوتو بگیره 🚀"];
-        $closers = ["تو قهرمان خودتی 👑", "به خودت افتخار کن 💫", "هر روز بهتر از دیروز 🌿"];
-
-        $final = Arr::random($openers) . ' ' . $message . ' ' . Arr::random($closers);
+        $final = $this->randomOpener()
+            . ' '
+            . $message
+            . ' '
+            . $this->randomCloser();
 
         return $this->formatMessage($final);
     }
 
-    /**
-     * محاسبه مدت نمایش (duration) بر اساس طول پیام
-     */
+    protected function resolveLevelKey(int $percent): string
+    {
+        if ($percent >= 100) {
+            return 'full';
+        }
+
+        if ($percent >= 70) {
+            return 'high';
+        }
+
+        if ($percent >= 40) {
+            return 'mid';
+        }
+
+        return 'low';
+    }
+
+    protected function randomMessage(string $key, int $percent, int $remaining): ?string
+    {
+        $bank = $this->messages[$key] ?? [];
+
+        if (empty($bank)) {
+            return null;
+        }
+
+        return str_replace(
+            ['%{percent}', '%{remaining}'],
+            [$percent, $remaining],
+            Arr::random($bank)
+        );
+    }
+
+    protected function fallbackProgressMessage(int $percent, int $remaining): string
+    {
+        return "تا الان {$percent}٪ پیش رفتی و {$remaining} تسک باقی مونده.";
+    }
+
+    protected function randomOpener(): string
+    {
+        return Arr::random([
+            'آفرین 👏',
+            'دمت گرم 💪',
+            'ادامه بده 🌟',
+            'هیچ‌چیز نمی‌تونه جلوتو بگیره 🚀',
+        ]);
+    }
+
+    protected function randomCloser(): string
+    {
+        return Arr::random([
+            'تو قهرمان خودتی 👑',
+            'به خودت افتخار کن 💫',
+            'هر روز بهتر از دیروز 🌿',
+        ]);
+    }
+
     protected function formatMessage(string $text): array
     {
         $base = 3000;
         $extraPerChar = 80;
         $length = mb_strlen($text);
-        $duration = min(15000, max($base, $base + $length * $extraPerChar)); // بین 3 تا 15 ثانیه
+        $duration = min(15000, max($base, $base + $length * $extraPerChar));
 
         return [
             'text' => trim($text),

@@ -14,18 +14,30 @@ class TaskResource extends JsonResource
      *
      * @return array<string, mixed>
      */
-    public function toArray(Request $request)
+    public function toArray(Request $request): array
     {
+        $day = $this->day ? Carbon::parse($this->day) : null;
+
         return [
-            'id'          => $this->id,
-            'title'       => $this->title,
-            'is_done'      => $this->is_done,
+            'id'         => $this->id,
+            'title'      => $this->title,
+            'is_done'    => (bool) $this->is_done,
             'goal_id'    => $this->goal_id,
-            'goal_title'    => $this->goal->title,
-            'day'  => $this->day
-                ? Jalalian::fromCarbon(Carbon::parse($this->day))->format('Y-m-d')
+            'goal_title' => $this->whenLoaded('goal', fn () => $this->goal->title),
+
+            // برای API، match با تقویم، ساخت/آپدیت و همه منطق‌های فرانت
+            'day' => $day
+                ? $day->toDateString()
                 : null,
-            'created_at'  => $this->created_at->toDateTimeString(),
+
+            // فقط برای نمایش شمسی، اگر جایی لازم شد
+            'day_shamsi' => $day
+                ? Jalalian::fromCarbon($day)->format('Y-m-d')
+                : null,
+
+            'created_at' => $this->created_at
+                ? $this->created_at->toDateTimeString()
+                : null,
         ];
     }
 }

@@ -22,13 +22,12 @@ class UpdateTaskRequest extends FormRequest
      */
     public function rules(): array
     {
-         return [
-        'title' => ['nullable', 'string', 'max:255'],
-        'day' => ['sometimes', 'date'],
-        'is_done' => ['boolean'],
-        'for' => ['nullable', 'numeric', 'max:365', 'min:1'],
-
-    ];
+        return [
+            'title' => ['sometimes', 'nullable', 'string', 'max:255'],
+            'day' => ['sometimes', 'date_format:Y-m-d'],
+            'is_done' => ['sometimes', 'boolean'],
+            'for' => ['sometimes', 'nullable', 'numeric', 'max:365', 'min:1'],
+        ];
     }
 
     public function messages(): array

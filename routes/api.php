@@ -36,7 +36,7 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::delete('/notifications/{id}',       [NotificationController::class, 'destroy']);
     Route::delete('/notifications',            [NotificationController::class, 'destroyAll']);
 
-    Route::middleware('auth:sanctum')->post('/save-subscription', [PushSubscriptionController::class, 'store']);
+    Route::post('/save-subscription', [PushSubscriptionController::class, 'store']);
 });
 
 Route::post('/captcha/new', [CaptchaController::class, 'new'])
@@ -63,3 +63,85 @@ Route::get('/test', function () {
      return 'Notification sent!';
 });
 
+
+use App\Jobs\SendDailyReportNotificationJob;
+use App\Jobs\SendTaskReminderNotification;
+use Illuminate\Support\Facades\Cache;
+
+Route::get('/test-notifications/user-1', function () {
+    abort_unless(app()->environment(['local', 'testing']), 403);
+
+    $user = User::find(2);
+
+    if (!$user) {
+        return response()->json([
+            'success' => false,
+            'message' => 'User with id=1 not found.',
+        ], 404);
+    }
+
+    $today = now()->toDateString();
+
+    Cache::forget("daily-report:user:{$user->id}:date:{$today}");
+    Cache::forget("task-reminder:sent:user:{$user->id}:date:{$today}");
+    Cache::forget("task-reminder:dispatch-lock:user:{$user->id}:date:{$today}");
+
+    $beforeNotificationsCount = $user->notifications()->count();
+    $beforeUnreadCount = $user->unreadNotifications()->count();
+
+    $results = [
+        'daily_report' => $thisResult = [
+            'success' => false,
+            'error' => null,
+        ],
+        'task_reminder' => [
+            'success' => false,
+            'error' => null,
+        ],
+    ];
+
+    try {
+        SendDailyReportNotificationJob::dispatchSync($user->id);
+        $results['daily_report']['success'] = true;
+    } catch (Throwable $exception) {
+        report($exception);
+        $results['daily_report']['error'] = $exception->getMessage();
+    }
+
+    try {
+        SendTaskReminderNotification::dispatchSync($user->id);
+        $results['task_reminder']['success'] = true;
+    } catch (Throwable $exception) {
+        report($exception);
+        $results['task_reminder']['error'] = $exception->getMessage();
+    }
+
+    $user->refresh();
+
+    $afterNotificationsCount = $user->notifications()->count();
+    $afterUnreadCount = $user->unreadNotifications()->count();
+
+    return response()->json([
+        'success' => true,
+        'message' => 'Notification jobs tested for user id=1.',
+        'data' => [
+            'user_id' => $user->id,
+            'date' => $today,
+            'settings' => [
+                'daily_report' => (bool)$user->daily_report,
+                'task_reminder' => (bool)$user->task_reminder,
+                'task_reminder_time' => $user->task_reminder_time,
+                'report_time' => $user->report_time,
+            ],
+            'notifications' => [
+                'before_total' => $beforeNotificationsCount,
+                'after_total' => $afterNotificationsCount,
+                'created_count' => $afterNotificationsCount - $beforeNotificationsCount,
+                'before_unread' => $beforeUnreadCount,
+                'after_unread' => $afterUnreadCount,
+                'new_unread_count' => $afterUnreadCount - $beforeUnreadCount,
+            ],
+            'jobs' => $results,
+        ],
+    ]);
+});

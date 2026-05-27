@@ -5,78 +5,96 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\StoreTaskRequest;
 use App\Http\Requests\UpdateTaskRequest;
-use App\Repositories\GoalRepository;
-use Illuminate\Http\JsonResponse;
 use App\Http\Resources\TaskResource;
+use App\Repositories\GoalRepository;
 use App\Repositories\TaskRepository;
+use App\Services\ProgressMessageService;
+use Carbon\Carbon;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use Morilog\Jalali\Jalalian;
-use App\Models\Task;
-use App\Models\User;
-use App\Jobs\SendProgressNotificationJob;
-use Illuminate\Database\Eloquent\Builder;
-use Illuminate\Support\Facades\Log; // Added back for Log in Job logic
+use Illuminate\Support\Facades\Log;
 
 class TaskController extends Controller
 {
-    public function __construct(private TaskRepository $repository, private GoalRepository $goalRepository) {}
+    public function __construct(
+        private TaskRepository $repository,
+        private GoalRepository $goalRepository
+    ) {}
 
     /**
-     * ✅ متد Index به حالت اولیه برگردانده شد.
+     * دریافت تسک‌ها بر اساس بازه تاریخ میلادی
+     *
+     * قرارداد تاریخ:
+     * Frontend UI: شمسی
+     * API / Backend / Database: میلادی با فرمت Y-m-d
      */
     public function index(Request $request): JsonResponse
     {
         $user = auth()->user();
-        $goals = $user->goals->pluck('id')->toArray();
-        $start = Jalalian::fromFormat('Y-m-d', $request->input('start_date'))
-            ->toCarbon();
 
-        $end = Jalalian::fromFormat('Y-m-d', $request->input('end_date'))
-            ->toCarbon();
+        $goals = $user->goals()->pluck('id')->toArray();
 
-        // استفاده مجدد از متد Repository شما
+        $startDate = $request->input('start_date');
+        $endDate = $request->input('end_date');
+
+        if (!$startDate || !$endDate) {
+            return $this->errorResponse(
+                errors: ['start_date and end_date are required.'],
+                messageKey: 'validation_error',
+                code: 422
+            );
+        }
+
+        $start = Carbon::createFromFormat('Y-m-d', $startDate)->startOfDay();
+        $end = Carbon::createFromFormat('Y-m-d', $endDate)->endOfDay();
+
         $tasks = $this->repository->allWithDate($goals, $start, $end);
 
         return $this->successResponse(TaskResource::collection($tasks));
     }
 
+    /**
+     * ایجاد تسک جدید
+     *
+     * day باید از فرانت به صورت میلادی Y-m-d ارسال شود.
+     */
     public function store(StoreTaskRequest $request): JsonResponse
     {
         $data = $request->validated();
 
-        // Authorization Check: Ensure goal belongs to the user
         $goalId = $data['goal_id'] ?? null;
-        if ($goalId && auth()->user()->goals()->where('id', $goalId)->doesntExist()) {
-            return response()->json(['message' => 'Goal not found or unauthorized.'], 403);
+
+        if (!$goalId || auth()->user()->goals()->where('id', $goalId)->doesntExist()) {
+            return $this->errorResponse(
+                errors: ['Goal not found or unauthorized.'],
+                messageKey: 'forbidden',
+                code: 403
+            );
         }
 
-        $data['day'] = Jalalian::fromFormat('Y-m-d', $data['day'])
-            ->toCarbon();
+        if (array_key_exists('day', $data)) {
+            $data['day'] = Carbon::createFromFormat('Y-m-d', $data['day'])->toDateString();
+        }
+
+        if (array_key_exists('is_done', $data)) {
+            $data['is_done'] = (bool) $data['is_done'];
+        }
+
         $task = $this->repository->create($data);
-        return $this->successResponse(new TaskResource($task), 'success', 201);
+
+        return $this->successResponse(
+            data: new TaskResource($task),
+            messageKey: 'success',
+            code: 201
+        );
     }
 
     public function show($id): JsonResponse
     {
-        // 1. Fetch Task and authorize via Goal
-        $task = $this->repository->find($id);
-        if ($task && $task->goal->user_id !== auth()->user()->id) {
-            return response()->json(['message' => 'Unauthorized access.'], 403);
-        }
-
-        // Returning Goal details for consistency with original code
-        return response()->json($this->goalRepository->find($task->goal_id));
-    }
-
-    public function update(UpdateTaskRequest $request, $id): JsonResponse
-    {
-        $data = $request->validated();
-
-        // 1️⃣ دریافت تسک و کاربر
         $task = $this->repository->find($id);
         $user = auth()->user();
 
-        if (!$task || $task->goal->user_id !== $user->id) {
+        if (!$task || !$task->goal || $task->goal->user_id !== $user->id) {
             return $this->errorResponse(
                 errors: ['Task not found or unauthorized.'],
                 messageKey: 'forbidden',
@@ -84,88 +102,130 @@ class TaskController extends Controller
             );
         }
 
+        return $this->successResponse(
+            data: new TaskResource($task)
+        );
+    }
+
+    /**
+     * آپدیت partial تسک
+     *
+     * نکته مهم:
+     * - برای toggle فقط is_done ارسال شود.
+     * - برای تغییر تاریخ فقط day ارسال شود.
+     * - برای ویرایش عنوان فقط title ارسال شود.
+     * - هیچ‌وقت از فرانت کل task با ...task ارسال نشود.
+     */
+    public function update(UpdateTaskRequest $request, $id): JsonResponse
+    {
+        $data = $request->validated();
+
+        $task = $this->repository->find($id);
+        $user = auth()->user();
+
+        if (!$task || !$task->goal || $task->goal->user_id !== $user->id) {
+            return $this->errorResponse(
+                errors: ['Task not found or unauthorized.'],
+                messageKey: 'forbidden',
+                code: 403
+            );
+        }
+
+        $oldStatus = (bool) $task->is_done;
+        $oldDay = Carbon::parse($task->day)->toDateString();
+
+        $hasStatusUpdate = array_key_exists('is_done', $data);
+        $hasDayUpdate = array_key_exists('day', $data);
+
+        if ($hasStatusUpdate) {
+            $data['is_done'] = (bool) $data['is_done'];
+        }
+
+        if ($hasDayUpdate) {
+            $data['day'] = Carbon::createFromFormat('Y-m-d', $data['day'])->toDateString();
+        }
+
+        $newStatusFromRequest = $hasStatusUpdate ? (bool) $data['is_done'] : $oldStatus;
+        $newDayFromRequest = $hasDayUpdate ? $data['day'] : $oldDay;
+
+        $statusChanged = $hasStatusUpdate && $oldStatus !== $newStatusFromRequest;
+
         /*
         |--------------------------------------------------------------------------
-        | تعیین تاریخ مبنای محاسبه پیشرفت
+        | تاریخ مبنای محاسبه پیشرفت
         |--------------------------------------------------------------------------
-        | اگر day در درخواست آمده باشد، یعنی کاربر در حال تغییر تاریخ تسک است.
-        | در غیر این صورت، مثل Toggle وضعیت انجام‌شدن، از تاریخ فعلی خود تسک
-        | برای محاسبه پیشرفت استفاده می‌کنیم.
+        | اگر وضعیت انجام‌شدن تغییر کند، پیام پیشرفت برای همان روز مؤثر محاسبه می‌شود.
+        | اگر فقط day تغییر کند، پیام پیشرفت ساخته نمی‌شود.
         */
-        if (array_key_exists('day', $data)) {
-            $data['day'] = \Morilog\Jalali\Jalalian::fromFormat('Y-m-d', $data['day'])->toCarbon();
-            $progressDay = $data['day'];
-        } else {
-            $progressDay = $task->day;
+        $progressDay = $newDayFromRequest;
+
+        $progressMessage = null;
+        $displayDuration = 4000;
+
+        $service = new ProgressMessageService();
+
+        $beforePercent = null;
+
+        if ($statusChanged) {
+            $progressBefore = $service->getUserProgressForDate($user->id, $progressDay);
+            $beforePercent = $progressBefore['percent'];
         }
 
-        // 2️⃣ گرفتن وضعیت پیشرفت قبل از تغییر
-        $service = new \App\Services\ProgressMessageService();
-        $progressBefore = $service->getUserProgressForDate($user->id, $progressDay);
-        $beforePercent  = $progressBefore['percent'];
-
-        // 3️⃣ انجام آپدیت تسک
-        $oldStatus = $task->is_done;
         $task = $this->repository->update($id, $data);
-        $newStatus = $task->is_done;
 
-        // 4️⃣ گرفتن وضعیت بعد از تغییر
-        $progressAfter = $service->getUserProgressForDate($user->id, $progressDay);
-        $afterPercent  = $progressAfter['percent'];
-        $remaining     = $progressAfter['remaining'];
+        if ($statusChanged) {
+            $progressAfter = $service->getUserProgressForDate($user->id, $progressDay);
 
-        // 6️⃣ تشخیص جهت تغییر (forward/backward)
-        $direction = $afterPercent > $beforePercent ? 'forward' : 'backward';
-        $context   = $direction === 'forward' ? 'report' : 'regress';
+            $afterPercent = $progressAfter['percent'];
+            $remaining = $progressAfter['remaining'];
 
-        // 7️⃣ ساخت پیام داینامیک بر اساس وضعیت
-        try {
-            $result = $service->buildMessage(
-                $afterPercent,
-                $remaining,
-                $context,
-                ['direction' => $direction]
-            );
+            $direction = $newStatusFromRequest ? 'forward' : 'backward';
+            $context = $direction === 'forward' ? 'report' : 'regress';
 
-            $progressMessage = $result['text'];
-            $displayDuration = $result['duration'];
+            try {
+                $result = $service->buildMessage(
+                    $afterPercent,
+                    $remaining,
+                    $context,
+                    ['direction' => $direction]
+                );
 
-
-        } catch (\Throwable $e) {
-            \Log::error("❌ Failed to generate progress message", [
-                'user_id' => $user->id,
-                'task_id' => $task->id,
-                'error'   => $e->getMessage(),
-            ]);
-            $progressMessage = null;
-            $displayDuration = 4000; // پیش‌فرض
+                $progressMessage = $result['text'];
+                $displayDuration = $result['duration'];
+            } catch (\Throwable $e) {
+                Log::error('❌ Failed to generate progress message', [
+                    'user_id' => $user->id,
+                    'task_id' => $task->id,
+                    'error' => $e->getMessage(),
+                ]);
+            }
         }
 
-        // 8️⃣ بازگشت پاسخ استاندارد
         return $this->successResponse(
             data: [
-                'task'     => new \App\Http\Resources\TaskResource($task),
-                'message'  => $progressMessage,
+                'task' => new TaskResource($task),
+                'message' => $progressMessage,
                 'duration' => $displayDuration,
-            ],
+            ]
         );
     }
 
     public function destroy($id): JsonResponse
     {
         $task = $this->repository->find($id);
+        $user = auth()->user();
 
-        if (!$task || $task->goal->user_id !== auth()->user()->id) {
-            return response()->json(['message' => 'Task not found or unauthorized.'], 403);
+        if (!$task || !$task->goal || $task->goal->user_id !== $user->id) {
+            return $this->errorResponse(
+                errors: ['Task not found or unauthorized.'],
+                messageKey: 'forbidden',
+                code: 403
+            );
         }
 
         $this->repository->delete($id);
+
         return response()->json(null, 204);
     }
 
-    // متد goalsByWeek شما دست نخورده باقی می‌ماند.
-    public function goalsByWeek($weekId)
-    {
-        // ... (منطق شما) ...
-    }
-}
+ }
