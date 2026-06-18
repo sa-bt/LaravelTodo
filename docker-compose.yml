@@ -47,7 +47,7 @@ services:
     container_name: ${APP_NAME}-app
     volumes:
       - ./:/var/www/html
-      - ./docker/supervisord/queue-worker.conf:/etc/supervisor/conf.d/supervisord.conf
+      - ./docker/supervisord.ini:/etc/supervisor.d/supervisord.ini
       - ./docker/php-ini/php.ini:/usr/local/etc/php/conf.d/php.ini
     expose:
       - "9000"

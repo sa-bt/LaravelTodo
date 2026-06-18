@@ -67,6 +67,6 @@ RUN set -eux; \
 # 8) Supervisor
 # ------------------------------------------------
 RUN mkdir -p /etc/supervisor.d/
-COPY ./docker/supervisord/queue-worker.conf /etc/supervisor.d/supervisord.ini
+COPY ./docker/supervisord.ini /etc/supervisor.d/supervisord.ini
 
 CMD ["supervisord", "-c", "/etc/supervisor.d/supervisord.ini"]
