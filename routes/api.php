@@ -4,6 +4,7 @@ use App\Http\Controllers\Api\ActivityController;
 use App\Http\Controllers\Api\AuthController;
 use App\Http\Controllers\Api\CaptchaController;
 use App\Http\Controllers\Api\ContactController;
+use App\Http\Controllers\Api\ContentController;
 use App\Http\Controllers\Api\NotificationController;
 use Illuminate\Support\Facades\Route;
 use App\Http\Controllers\Api\GoalController;
@@ -50,6 +51,8 @@ Route::middleware(['auth:sanctum', 'can:admin'])->group(function () {
 
     Route::get('/admin/courses/list', [CourseController::class, 'listCourses']); // 👈 مسیر جدید
     Route::get('/admin/course/{slug}', [CourseController::class, 'show']);
+    Route::apiResource('/admin/contents', ContentController::class)
+        ->parameters(['contents' => 'content']);
 });
 
 Route::middleware(['throttle:3,1', 'block.spam']) // هم ریت لیمیت و هم هانی‌پات
