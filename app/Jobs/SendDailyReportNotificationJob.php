@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Models\Goal;
 use App\Models\User;
 use App\Notifications\ReportNotification;
 use App\Services\ActivityReportService;
@@ -168,22 +169,31 @@ class SendDailyReportNotificationJob implements ShouldQueue
         $total = 0;
         $done = 0;
 
+        // The counts above are what the message says out loud. The two below
+        // decide the percentage, so a high priority goal weighs more there.
+        $totalWeight = 0;
+        $doneWeight = 0;
+
         foreach ($user->goals as $goal) {
             if ($goal->children_count > 0) {
                 continue;
             }
 
+            $weight = Goal::weightOf($goal->priority);
+
             foreach ($goal->tasks as $task) {
                 $total++;
+                $totalWeight += $weight;
 
                 if ($task->is_done) {
                     $done++;
+                    $doneWeight += $weight;
                 }
             }
         }
 
         $remaining = $total - $done;
-        $percent = $total > 0 ? (int) round(($done / $total) * 100) : 0;
+        $percent = $totalWeight > 0 ? (int) round(($doneWeight / $totalWeight) * 100) : 0;
 
         return [
             'total' => $total,

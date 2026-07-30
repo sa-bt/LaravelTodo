@@ -22,6 +22,17 @@ Artisan::command('inspire', function () {
         Schedule::command('reports:send-drop-alerts-due')
             ->weeklyOn(6, '10:00')
             ->withoutOverlapping();
+        /*
+         * جمع‌بندی بازدید، هر شب.
+         *
+         * بعد از نیمه‌شب اجرا می‌شود تا روز کامل شده باشد. خودش چند روز عقب را
+         * هم بازسازی می‌کند، پس یک شب اجرانشدن، سوراخ همیشگی در تاریخچه
+         * نمی‌گذارد. هرس داده خام بعد از آن می‌آید تا هیچ روزی پیش از
+         * جمع‌بندی‌شدن حذف نشود.
+         */
+        Schedule::command('visits:aggregate')->dailyAt('00:20')->withoutOverlapping();
+        Schedule::command('visits:prune')->dailyAt('03:30')->withoutOverlapping();
+
         Schedule::command('app:send-goal-reminders')
             ->everyMinute()
             ->withoutOverlapping()

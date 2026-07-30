@@ -10,21 +10,25 @@ use NotificationChannels\WebPush\WebPushMessage;
 
 class TaskNotification extends Notification implements ShouldQueue
 {
+    use Queueable;
 
-use Queueable;
     public function via(object $notifiable): array
     {
-        return [WebPushChannel::class]; // فقط WebPush
+        return [WebPushChannel::class];
     }
 
-    public function toWebPush($notifiable, $notification)
+    public function toWebPush(object $notifiable, object $notification): WebPushMessage
     {
         return (new WebPushMessage)
             ->title('یادآوری تسک')
-            ->icon('/pwa-192x192.png') // 👈 حتماً این رو ست کن
-//            ->badge('/pwa-badge.png')  // 👈 این برای موبایل خیلی حیاتیه
+            ->icon('/pwa-192x192.png')
             ->body('یک تسک جدید برات اومده!')
-            ->action('مشاهده', 'view_task');
+            ->vibrate([100, 50, 100])
+            ->action('مشاهده', 'view_task')
+            ->dir('rtl')
+            ->lang('fa-IR')
+            ->renotify(false)
+            ->requireInteraction(false);
     }
 
     public function toArray(object $notifiable): array

@@ -10,6 +10,22 @@ use Carbon\Carbon;
 
 class Goal extends Model
 {
+    /**
+     * How much a task counts towards a completion percentage.
+     *
+     * A task carries no weight of its own: it inherits the priority of its
+     * goal. The three levels already existed and were purely decorative, so
+     * nothing new has to be entered anywhere for a percentage to become
+     * weighted.
+     *
+     * Only percentages use this. Counts stay counts everywhere, otherwise a
+     * day with five tasks would report nine of them.
+     */
+    public const PRIORITY_WEIGHTS = ['low' => 1, 'medium' => 2, 'high' => 3];
+
+    /** Weight of a goal whose priority is missing or unknown. */
+    public const DEFAULT_WEIGHT = 2;
+
     protected $fillable = [
         'user_id', 'title', 'description', 'parent_id', 'priority', 'status',
         'send_task_reminder', 'reminder_time'
@@ -44,6 +60,35 @@ class Goal extends Model
     public function tasks(): HasMany
     {
         return $this->hasMany(Task::class)->orderBy('day');
+    }
+
+    // ------------------------------------
+    // Weight
+    // ------------------------------------
+
+    /**
+     * Weight of a single priority value.
+     */
+    public static function weightOf(?string $priority): int
+    {
+        return self::PRIORITY_WEIGHTS[$priority] ?? self::DEFAULT_WEIGHT;
+    }
+
+    /**
+     * The same map as a SQL expression, for aggregates that must not load models.
+     *
+     * Both the keys and the values come from the constant above, never from
+     * request input, so building the statement by hand is safe here.
+     */
+    public static function weightSql(string $column = 'goals.priority'): string
+    {
+        $cases = '';
+
+        foreach (self::PRIORITY_WEIGHTS as $priority => $weight) {
+            $cases .= " WHEN '{$priority}' THEN {$weight}";
+        }
+
+        return "CASE {$column}{$cases} ELSE " . self::DEFAULT_WEIGHT . ' END';
     }
 
     // ------------------------------------

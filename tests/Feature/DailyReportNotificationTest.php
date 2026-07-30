@@ -18,11 +18,12 @@ class DailyReportNotificationTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function createGoal(User $user): Goal
+    private function createGoal(User $user, string $priority = 'medium'): Goal
     {
         return Goal::query()->create([
             'user_id' => $user->id,
             'title' => 'Goal',
+            'priority' => $priority,
         ]);
     }
 
@@ -63,6 +64,35 @@ class DailyReportNotificationTest extends TestCase
             $this->assertDoesNotMatchRegularExpression('/[0-9]/', $notification->body);
             $this->assertStringContainsString('۱ از ۲', $notification->body);
             $this->assertSame('daily_report', $notification->type);
+
+            return true;
+        });
+    }
+
+    /**
+     * متن گزارش دو جور عدد دارد و این آزمون هر دو را با هم می‌بیند.
+     *
+     * جمله «۱ از ۲ تسک» شمارش است و نباید تکان بخورد. درصد کنارش وزنی است، پس
+     * وقتی تسک انجام‌شده از هدف با اولویت بالا باشد و انجام‌نشده از اولویت
+     * پایین، عدد ۷۵ می‌شود نه ۵۰.
+     */
+    public function test_daily_report_percentage_follows_the_priority_while_the_count_does_not(): void
+    {
+        Notification::fake();
+
+        $user = User::factory()->create(['daily_report' => true]);
+
+        $today = Carbon::today()->toDateString();
+
+        $this->createTask($this->createGoal($user, 'high'), $today, true);
+        $this->createTask($this->createGoal($user, 'low'), $today, false);
+
+        $this->sendReport($user);
+
+        Notification::assertSentTo($user, ReportNotification::class, function ($notification) {
+            $this->assertStringContainsString('۱ از ۲', $notification->body);
+            $this->assertStringContainsString('۷۵٪', $notification->body);
+            $this->assertSame(75, $notification->percent);
 
             return true;
         });

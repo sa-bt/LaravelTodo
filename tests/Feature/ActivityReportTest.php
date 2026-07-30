@@ -16,11 +16,12 @@ class ActivityReportTest extends TestCase
 {
     use RefreshDatabase;
 
-    private function createGoal(User $user, string $title = 'Goal'): Goal
+    private function createGoal(User $user, string $title = 'Goal', string $priority = 'medium'): Goal
     {
         return Goal::query()->create([
             'user_id' => $user->id,
             'title' => $title,
+            'priority' => $priority,
         ]);
     }
 
@@ -624,6 +625,92 @@ class ActivityReportTest extends TestCase
     private function jalaliDay(string $day): string
     {
         return Jalalian::fromFormat('Y-m-d', $day)->toCarbon()->toDateString();
+    }
+
+    /**
+     * دو تسک در یک روز، یکی از هدف با اولویت بالا و یکی از هدف با اولویت پایین.
+     *
+     * شمارش می‌گوید یکی از دو تسک انجام شده، ولی وزن‌ها می‌گویند سه از چهار.
+     * همین اختلاف کل هدف این قابلیت است.
+     */
+    public function test_completion_percentage_follows_the_priority_of_the_goal(): void
+    {
+        $today = Carbon::today();
+        $jalaliToday = Jalalian::fromCarbon($today);
+        $year = (int) $jalaliToday->getYear();
+        $dayKey = $jalaliToday->format('Y-n-j');
+
+        $user = User::factory()->create();
+
+        $important = $this->createGoal($user, 'Important', 'high');
+        $minor = $this->createGoal($user, 'Minor', 'low');
+
+        $this->createTask($important, $today->toDateString(), true);
+        $this->createTask($minor, $today->toDateString(), false);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson("/api/activities/{$year}")
+            ->assertOk()
+            // شمارش‌ها دست‌نخورده می‌مانند، وگرنه کاربر با دو تسک عدد چهار می‌بیند.
+            ->assertJsonPath("data.{$dayKey}.total", 2)
+            ->assertJsonPath("data.{$dayKey}.done", 1)
+            ->assertJsonPath('total_tasks_year_to_date', 2)
+            // سه از چهار، نه یک از دو.
+            ->assertJsonPath('average_completion_percentage', 75);
+    }
+
+    /**
+     * وقتی همه اهداف یک اولویت دارند، وزن هیچ چیزی را جابه‌جا نمی‌کند.
+     */
+    public function test_equal_priorities_leave_the_percentage_where_it_was(): void
+    {
+        $today = Carbon::today();
+        $year = (int) Jalalian::fromCarbon($today)->getYear();
+
+        $user = User::factory()->create();
+
+        $first = $this->createGoal($user, 'First', 'high');
+        $second = $this->createGoal($user, 'Second', 'high');
+
+        $this->createTask($first, $today->toDateString(), true);
+        $this->createTask($second, $today->toDateString(), false);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson("/api/activities/{$year}")
+            ->assertOk()
+            ->assertJsonPath('average_completion_percentage', 50);
+    }
+
+    /**
+     * رتبه‌بندی اهداف عمداً وزنی نیست.
+     *
+     * همه تسک‌های یک هدف اولویت یکسان دارند، پس وزن هر دو طرف کسر را در یک
+     * عدد ضرب می‌کند و نسبت تکان نمی‌خورد. این آزمون جلوی «اصلاح» بعدی را
+     * می‌گیرد.
+     */
+    public function test_goal_ranking_stays_the_same_whatever_the_priority_is(): void
+    {
+        $today = Carbon::today();
+        $from = $today->copy()->subDays(3)->toDateString();
+
+        $user = User::factory()->create();
+
+        $goal = $this->createGoal($user, 'Important', 'high');
+
+        $this->createTask($goal, $today->copy()->subDays(3)->toDateString(), true);
+        $this->createTask($goal, $today->copy()->subDays(2)->toDateString(), true);
+        $this->createTask($goal, $today->copy()->subDays(1)->toDateString(), true);
+        $this->createTask($goal, $today->toDateString(), false);
+
+        Sanctum::actingAs($user);
+
+        $this->getJson("/api/reports/goal-ranking?from={$from}&to={$today->toDateString()}")
+            ->assertOk()
+            ->assertJsonPath('data.goals.0.total', 4)
+            ->assertJsonPath('data.goals.0.done', 3)
+            ->assertJsonPath('data.goals.0.percent', 75);
     }
 
     /**

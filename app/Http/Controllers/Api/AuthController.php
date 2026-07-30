@@ -8,20 +8,32 @@ use App\Repositories\GoalRepository;
 use Illuminate\Http\JsonResponse;
 use App\Mail\OtpMail;
 use App\Models\User;
+use App\Notifications\NewUserAwaitingApproval;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Notification;
 use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Facades\Validator;
-use Tymon\JWTAuth\Facades\JWTAuth;
 use Illuminate\Validation\Rules\Password;
-use Illuminate\Support\Carbon;
 
 
 class AuthController extends Controller
 {
+    /** سقف حدس کد تأیید روی هر حساب، پیش از سوزاندن خود کد. */
+    private const OTP_MAX_ATTEMPTS = 5;
+
+    /** پنجرهٔ شمارش حدس‌ها، به ثانیه. */
+    private const OTP_ATTEMPT_DECAY = 600;
+
+    /** فاصلهٔ اجباری بین دو درخواست کد، به ثانیه. با تایمر فرانت هم‌خوان است. */
+    private const OTP_RESEND_COOLDOWN = 120;
+
+    /** سقف دریافت کد در شبانه‌روز برای هر حساب. */
+    private const OTP_RESEND_DAILY_CAP = 10;
+
     public function __construct(private GoalRepository $goalRepo) {}
 
 
@@ -49,21 +61,61 @@ class AuthController extends Controller
         }
 
         $pepper = (string) config('app.captcha_pepper', 'replace-with-strong-static-pepper');
-        $answerHash = hash('sha256', strtoupper(trim($validated['captcha_answer'])) . $pepper);
+        $answerHash = hash('sha256', $this->normalizeCaptchaAnswer($validated['captcha_answer']) . $pepper);
 
         if (!hash_equals($storedHash, $answerHash)) {
             // (اختیاری) اینجا می‌تونی شمارندهٔ تلاش‌ها بگذاری و بعد از N بار، خطای سخت‌تر بدهی
             return $this->errorResponse(errors: ['کد تأیید اشتباه است.'], code: 422);
         }
-        // 3) تلاش برای ورود
+        /*
+         * 3) تلاش برای ورود
+         *
+         * عمداً Auth::attempt نیست. آن متد گاردِ پیش‌فرضِ لحظهٔ اجرا را صدا
+         * می‌زند و این مسیرها هیچ گروه میان‌افزاری ندارند، پس گارد پیش‌فرض
+         * می‌تواند چیزی باشد که یک درخواست دیگر جا گذاشته. اینجا مستقیم با
+         * provider کار می‌کنیم: بدون نشست، بدون حالتِ سربار.
+         */
         $credentials = ['email' => $validated['email'], 'password' => $validated['password']];
-        if (!Auth::attempt($credentials)) {
+        $provider = Auth::createUserProvider('users');
+
+        /** @var \App\Models\User|null $user */
+        $user = $provider->retrieveByCredentials($credentials);
+
+        if (!$user || !$provider->validateCredentials($user, $credentials)) {
             return $this->errorResponse(errors: ['اطلاعات ورود نادرست است.'], code: 401);
         }
 
+        /*
+         * دروازهٔ وضعیت حساب، عمداً بعد از اعتبارسنجی گذرواژه.
+         *
+         * اگر قبلش می‌آمد، هر کسی با زدن ایمیل دیگران می‌فهمید آن حساب وجود
+         * دارد و در چه وضعی است. حالا فقط صاحب گذرواژه این را می‌بیند.
+         */
+        if (!$user->email_verified_at) {
+            return $this->errorResponse(
+                errors: ['account' => ['ابتدا ایمیل خود را تأیید کنید.']],
+                messageKey: 'ابتدا ایمیل خود را تأیید کنید.',
+                code: 403
+            );
+        }
+
+        if ($user->isRejected()) {
+            return $this->errorResponse(
+                errors: ['account' => ['درخواست عضویت شما پذیرفته نشد.']],
+                messageKey: 'درخواست عضویت شما پذیرفته نشد.',
+                code: 403
+            );
+        }
+
+        if (!$user->isApproved()) {
+            return $this->errorResponse(
+                errors: ['account' => ['حساب شما در انتظار تأیید مدیر است.']],
+                messageKey: 'حساب شما در انتظار تأیید مدیر است.',
+                code: 403
+            );
+        }
+
         // 4) ساخت توکن و پاسخ موفق
-        /** @var \App\Models\User $user */
-        $user  = Auth::user();
         $token = $user->createToken('api-token')->plainTextToken;
 
         // 💡 اصلاح پاسخ: اطمینان از ارسال نقش (role) کاربر
@@ -206,7 +258,7 @@ class AuthController extends Controller
         ];
         $v = trim($v);
         $v = preg_replace('/\s+/u', '', $v) ?? $v;
-        return strtr(strupper($v), $map);
+        return strtoupper(strtr($v, $map));
     }
     // در همان AuthController یا کنترلر مربوطه
     public function verifyOtp(Request $request): JsonResponse
@@ -218,9 +270,30 @@ class AuthController extends Controller
 
         $user = User::find($request->user_id);
 
-        // چک کردن انقضا و کد
-        if (!$user || $user->email_verified_at) { /* ... */
-        } // هندلینگ خطا
+        if ($user->email_verified_at) {
+            return $this->errorResponse(
+                errors: ['otp' => ['این ایمیل قبلاً تأیید شده است.']],
+                messageKey: 'این ایمیل قبلاً تأیید شده است.',
+                code: 409
+            );
+        }
+
+        /*
+         * سقف حدس روی خودِ حساب، نه روی نشانی شبکه.
+         *
+         * محدودیت مسیر فقط یک IP را کند می‌کند؛ یک کد شش‌رقمی را می‌شود از صد
+         * نشانی موازی حدس زد. این شمارنده به شناسهٔ کاربر بسته است، پس هر چند
+         * تا مهاجم هم که باشند روی یک سقف مشترک می‌نشینند.
+         */
+        $rlKey = 'otp-verify:' . $user->getKey();
+
+        if (RateLimiter::tooManyAttempts($rlKey, self::OTP_MAX_ATTEMPTS)) {
+            return $this->errorResponse(
+                errors: ['otp' => ['تلاش بیش از حد. کد جدید بگیرید و دوباره امتحان کنید.']],
+                messageKey: 'تلاش بیش از حد. کد جدید بگیرید و دوباره امتحان کنید.',
+                code: 429
+            )->header('Retry-After', (string) max(1, RateLimiter::availableIn($rlKey)));
+        }
 
         if (
             !$user->verification_code ||
@@ -228,6 +301,19 @@ class AuthController extends Controller
             now()->isAfter($user->verification_code_expires_at) ||
             !Hash::check($request->otp, $user->verification_code)
         ) {
+            RateLimiter::hit($rlKey, self::OTP_ATTEMPT_DECAY);
+
+            /*
+             * بعد از رسیدن به سقف، خودِ کد را هم می‌سوزانیم. وگرنه مهاجم فقط
+             * صبر می‌کرد تا پنجرهٔ شمارنده باز شود و از همان‌جا ادامه می‌داد.
+             */
+            if (RateLimiter::tooManyAttempts($rlKey, self::OTP_MAX_ATTEMPTS)) {
+                $user->update([
+                    'verification_code' => null,
+                    'verification_code_expires_at' => null,
+                ]);
+            }
+
             return $this->errorResponse(
                 errors: ['otp' => ['کد تأیید اشتباه یا منقضی شده است.']],
                 messageKey: 'کد تأیید اشتباه یا منقضی شده است.',
@@ -235,24 +321,51 @@ class AuthController extends Controller
             );
         }
 
-        // تأیید موفق و لاگین
-        $user->update([
+        RateLimiter::clear($rlKey);
+
+        /*
+         * forceFill لازم است: email_verified_at در $fillable نیست و با update
+         * بی‌صدا کنار گذاشته می‌شد. یعنی تا امروز هیچ حسابی واقعاً تأییدشده
+         * علامت نمی‌خورد و شمارندهٔ «تأییدشده» در داشبورد ادمین همیشه صفر بود.
+         */
+        $user->forceFill([
             'email_verified_at' => now(),
             'verification_code' => null,
             'verification_code_expires_at' => null,
-        ]);
+        ])->save();
 
-        $token = $user->createToken('auth_token', ['*'])->plainTextToken;
-
-        // 💡 اصلاح پاسخ: اطمینان از ارسال نقش (role) کاربر
-        $userData = $user->toArray();
-        unset($userData['verification_code'], $userData['verification_code_expires_at']);
+        /*
+         * اعلان به ادمین‌ها عمداً اینجاست و نه در register: تا وقتی کسی ایمیلش
+         * را تأیید نکرده، معلوم نیست اصلاً آدم باشد. اگر از register می‌رفت،
+         * صف انتظار ادمین با هر ثبت‌نام الکی پر می‌شد.
+         */
+        $this->notifyAdminsOfPendingUser($user);
 
         return $this->successResponse([
-            'user'  => $userData, // 👈 آبجکت تمیز شده کاربر شامل role: 'admin' یا 'user'
-            'token' => $token,
-        // 🚨 پیام فارسی را از آرایه data خارج کنید
-        ], messageKey: 'تأیید ایمیل با موفقیت انجام شد. به سیستم وارد شدید.', code: 200);
+            'user_id' => $user->id,
+            'email'   => $user->email,
+            'status'  => 'pending_approval',
+        ], messageKey: 'ایمیل شما تأیید شد. حساب پس از تأیید مدیر فعال می‌شود.', code: 200);
+    }
+
+    private function notifyAdminsOfPendingUser(User $user): void
+    {
+        $admins = User::query()->where('role', 'admin')->get();
+
+        if ($admins->isNotEmpty()) {
+            Notification::send($admins, new NewUserAwaitingApproval($user));
+        }
+    }
+
+    public function logout(Request $request): JsonResponse
+    {
+        /*
+         * فقط توکن همین دستگاه حذف می‌شود، نه همهٔ نشست‌ها. خروج از تلفن نباید
+         * کاربر را از رایانه‌اش هم بیرون بیندازد.
+         */
+        $request->user()->currentAccessToken()?->delete();
+
+        return $this->successResponse(messageKey: 'از حساب خارج شدید.');
     }
     public function resendOtp(Request $request): JsonResponse
     {
@@ -266,6 +379,39 @@ class AuthController extends Controller
         if ($user->email_verified_at) {
             return $this->errorResponse(messageKey: 'ایمیل قبلاً تأیید شده است.', code: 409);
         }
+
+        /*
+         * تا پیش از این، تنها چیزی که جلوی ارسال دوباره را می‌گرفت یک شمارنده در
+         * مرورگر بود. مسیر باز و بی‌سقف بود و با شناسهٔ عددیِ قابل حدس، هر کسی
+         * می‌توانست صندوق ایمیل یک کاربر واقعی را پر کند و سهمیهٔ ارسال ما را
+         * بسوزاند. حالا هم فاصلهٔ اجباری بین دو ارسال هست و هم سقف روزانه.
+         */
+        $cooldownKey = 'otp-resend:' . $user->getKey();
+        $dailyKey = 'otp-resend-daily:' . $user->getKey();
+
+        if (RateLimiter::tooManyAttempts($cooldownKey, 1)) {
+            $retry = RateLimiter::availableIn($cooldownKey);
+
+            return $this->errorResponse(
+                errors: ['otp' => ["تا {$retry} ثانیهٔ دیگر نمی‌توانید کد جدید بگیرید."]],
+                messageKey: "تا {$retry} ثانیهٔ دیگر نمی‌توانید کد جدید بگیرید.",
+                code: 429
+            )->header('Retry-After', (string) max(1, $retry));
+        }
+
+        if (RateLimiter::tooManyAttempts($dailyKey, self::OTP_RESEND_DAILY_CAP)) {
+            return $this->errorResponse(
+                errors: ['otp' => ['سقف دریافت کد در شبانه‌روز پر شده است.']],
+                messageKey: 'سقف دریافت کد در شبانه‌روز پر شده است.',
+                code: 429
+            )->header('Retry-After', (string) max(1, RateLimiter::availableIn($dailyKey)));
+        }
+
+        RateLimiter::hit($cooldownKey, self::OTP_RESEND_COOLDOWN);
+        RateLimiter::hit($dailyKey, 86400);
+
+        // کد تازه یعنی حدس‌های قبلی هم باید پاک شوند.
+        RateLimiter::clear('otp-verify:' . $user->getKey());
 
         // 1. ایجاد کد جدید
         $code = strval(random_int(100000, 999999));

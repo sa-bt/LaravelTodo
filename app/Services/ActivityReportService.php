@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Models\Goal;
 use App\Models\Task;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Carbon;
@@ -74,11 +75,25 @@ class ActivityReportService
         $start = $from->copy()->startOfDay();
         $end = $to->copy()->startOfDay();
 
+        /*
+         * Four numbers per day, not two.
+         *
+         * The counts answer "how many tasks", the weights answer "how much of
+         * the day". Only the second pair may drive a percentage or a heatmap
+         * colour; showing a weight where the user expects a task count would
+         * report nine tasks on a day that had five.
+         *
+         * The join is what makes the weights possible: a task holds no
+         * priority of its own, it inherits the one on its goal.
+         */
         $tasks = Task::query()
-            ->whereIn('goal_id', $goalIds)
-            ->whereBetween('day', $this->dateBounds($start, $end))
-            ->selectRaw('day, COUNT(*) as total, SUM(is_done = 1) as done')
-            ->groupBy('day')
+            ->join('goals', 'tasks.goal_id', '=', 'goals.id')
+            ->whereIn('tasks.goal_id', $goalIds)
+            ->whereBetween('tasks.day', $this->dateBounds($start, $end))
+            ->selectRaw('tasks.day, COUNT(*) as total, SUM(tasks.is_done = 1) as done')
+            ->selectRaw('SUM(' . Goal::weightSql() . ') as total_weight')
+            ->selectRaw('SUM(CASE WHEN tasks.is_done = 1 THEN ' . Goal::weightSql() . ' ELSE 0 END) as done_weight')
+            ->groupBy('tasks.day')
             ->get()
             ->keyBy(fn ($row) => Jalalian::fromDateTime($row->day)->format('Y-n-j'));
 
@@ -89,8 +104,10 @@ class ActivityReportService
             $key = Jalalian::fromCarbon($cursor)->format('Y-n-j');
 
             $days[$key] = [
-                'total' => $tasks->has($key) ? (int) $tasks[$key]->total : 0,
-                'done'  => $tasks->has($key) ? (int) $tasks[$key]->done : 0,
+                'total'        => $tasks->has($key) ? (int) $tasks[$key]->total : 0,
+                'done'         => $tasks->has($key) ? (int) $tasks[$key]->done : 0,
+                'total_weight' => $tasks->has($key) ? (int) $tasks[$key]->total_weight : 0,
+                'done_weight'  => $tasks->has($key) ? (int) $tasks[$key]->done_weight : 0,
             ];
 
             $cursor->addDay();
@@ -108,6 +125,8 @@ class ActivityReportService
 
         $totalTasks = 0;
         $doneTasks = 0;
+        $totalWeight = 0;
+        $doneWeight = 0;
         $perfectDays = 0;
         $inactiveDays = 0;
 
@@ -118,7 +137,12 @@ class ActivityReportService
 
             $totalTasks += $day['total'];
             $doneTasks += $day['done'];
+            $totalWeight += $day['total_weight'];
+            $doneWeight += $day['done_weight'];
 
+            // A perfect day is the same day whichever pair is read: every task
+            // done means every weight done. The counts are kept here because
+            // they are the cheaper comparison.
             if ($day['total'] > 0 && $day['done'] === $day['total']) {
                 $perfectDays++;
             }
@@ -133,7 +157,7 @@ class ActivityReportService
             'done_tasks'      => $doneTasks,
             'perfect_days'    => $perfectDays,
             'inactive_days'   => $inactiveDays,
-            'average_percent' => $totalTasks > 0 ? round(($doneTasks / $totalTasks) * 100, 1) : 0,
+            'average_percent' => $totalWeight > 0 ? round(($doneWeight / $totalWeight) * 100, 1) : 0,
         ];
     }
 
@@ -166,11 +190,11 @@ class ActivityReportService
         $weekdays = [];
 
         for ($month = 1; $month <= 12; $month++) {
-            $months[$month] = ['month' => $month, 'total' => 0, 'done' => 0];
+            $months[$month] = ['month' => $month, 'total' => 0, 'done' => 0, 'total_weight' => 0, 'done_weight' => 0];
         }
 
         for ($weekday = 0; $weekday < 7; $weekday++) {
-            $weekdays[$weekday] = ['index' => $weekday, 'total' => 0, 'done' => 0];
+            $weekdays[$weekday] = ['index' => $weekday, 'total' => 0, 'done' => 0, 'total_weight' => 0, 'done_weight' => 0];
         }
 
         $streak = ['length' => 0, 'start' => null, 'end' => null];
@@ -199,9 +223,13 @@ class ActivityReportService
 
             $months[$month]['total'] += $day['total'];
             $months[$month]['done'] += $day['done'];
+            $months[$month]['total_weight'] += $day['total_weight'];
+            $months[$month]['done_weight'] += $day['done_weight'];
 
             $weekdays[$weekday]['total'] += $day['total'];
             $weekdays[$weekday]['done'] += $day['done'];
+            $weekdays[$weekday]['total_weight'] += $day['total_weight'];
+            $weekdays[$weekday]['done_weight'] += $day['done_weight'];
 
             // A day without tasks neither breaks the streak nor extends it.
             // Not planning a day is not a failure. Same rule as the report page.
@@ -344,6 +372,12 @@ class ActivityReportService
      * are not weak, they were simply never scheduled, and a zero percent bar
      * would read as a failure.
      *
+     * Deliberately unweighted, and it is not an oversight. Weight comes from
+     * the priority of the goal, so inside one goal every task weighs the same
+     * and the ratio cannot move. Weighting here would only multiply both sides
+     * of the same fraction. The same holds for goalActivity() and for the
+     * stats accessor on the goal model.
+     *
      * @param  Collection  $titles  goal id => title
      */
     public function goalRanking(Collection $titles, CarbonInterface $from, CarbonInterface $to): Collection
@@ -412,11 +446,14 @@ class ActivityReportService
 
     /**
      * Completion rate of a bucket that already carries its totals.
+     *
+     * The rate follows the weights while the counts next to it stay counts,
+     * so a card can print both without either of them lying.
      */
     private function withPercent(array $bucket): array
     {
-        $bucket['percent'] = $bucket['total'] > 0
-            ? round(($bucket['done'] / $bucket['total']) * 100, 1)
+        $bucket['percent'] = $bucket['total_weight'] > 0
+            ? round(($bucket['done_weight'] / $bucket['total_weight']) * 100, 1)
             : 0;
 
         return $bucket;

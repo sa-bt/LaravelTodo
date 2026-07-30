@@ -86,11 +86,9 @@ class ReportNotification extends Notification implements ShouldQueue
             ->data($data)
             ->vibrate([100, 50, 100])
             ->action('باز کردن', 'open')
-            ->options([
-                'dir' => 'rtl',
-                'lang' => 'fa-IR',
-                'renotify' => false,
-                'requireInteraction' => false,
-            ]);
+            ->dir('rtl')
+            ->lang('fa-IR')
+            ->renotify(false)
+            ->requireInteraction(false);
     }
 }

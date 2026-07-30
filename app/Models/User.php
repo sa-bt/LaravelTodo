@@ -45,6 +45,10 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        // هش کد تأیید هیچ‌جا لازم نیست بیرون برود؛ فهرست کاربرانِ پنل ادمین
+        // کل ردیف را برمی‌گرداند و این ستون هم با آن می‌رفت.
+        'verification_code',
+        'verification_code_expires_at',
     ];
 
     /**
@@ -56,9 +60,51 @@ class User extends Authenticatable
     {
         return [
             'email_verified_at' => 'datetime',
+            'approved_at' => 'datetime',
+            'rejected_at' => 'datetime',
             'password' => 'hashed',
             'role' => 'string',
         ];
+    }
+
+    /*
+     * ستون‌های تأیید عمداً در $fillable نیستند. تنها راه تغییرشان متدهای زیر
+     * است، تا هیچ update انبوهی نتواند حسابی را از صف انتظار بیرون بکشد.
+     */
+    public function isApproved(): bool
+    {
+        return $this->approved_at !== null && $this->rejected_at === null;
+    }
+
+    public function isRejected(): bool
+    {
+        return $this->rejected_at !== null;
+    }
+
+    public function isPendingApproval(): bool
+    {
+        return $this->approved_at === null && $this->rejected_at === null;
+    }
+
+    public function approveBy(self $admin): void
+    {
+        $this->forceFill([
+            'approved_at' => now(),
+            'rejected_at' => null,
+            'approved_by' => $admin->getKey(),
+        ])->save();
+    }
+
+    public function rejectBy(self $admin): void
+    {
+        $this->forceFill([
+            'approved_at' => null,
+            'rejected_at' => now(),
+            'approved_by' => $admin->getKey(),
+        ])->save();
+
+        // حسابِ ردشده نباید با توکن قدیمی‌اش سرِ پا بماند.
+        $this->tokens()->delete();
     }
 
     public function goals()

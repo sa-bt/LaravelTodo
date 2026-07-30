@@ -71,12 +71,10 @@ class GenericWebPush extends Notification implements ShouldQueue
             ->data($data)
             ->vibrate([100, 50, 100])
             ->action('باز کردن', 'open')
-            ->options([
-                'dir' => 'rtl',
-                'lang' => 'fa-IR',
-                'renotify' => true,
-                'requireInteraction' => false,
-            ]);
+            ->dir('rtl')
+            ->lang('fa-IR')
+            ->renotify(false)
+            ->requireInteraction(false);
     }
 
     private function type(): string
@@ -86,6 +84,6 @@ class GenericWebPush extends Notification implements ShouldQueue
 
     private function resolvedTag(): string
     {
-        return $this->tag ?: str(config('app.name'))->slug()->toString() . '-notification';
+        return $this->tag ?: str(config('app.name'))->slug()->toString().'-notification';
     }
 }

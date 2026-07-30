@@ -27,6 +27,7 @@ class UserFactory extends Factory
             'name' => fake()->name(),
             'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
+            'approved_at' => now(),
             'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
         ];
@@ -39,6 +40,26 @@ class UserFactory extends Factory
     {
         return $this->state(fn (array $attributes) => [
             'email_verified_at' => null,
+        ]);
+    }
+
+    /** حسابی که ایمیلش تأیید شده ولی هنوز منتظر اجازهٔ ادمین است. */
+    public function pendingApproval(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'email_verified_at' => now(),
+            'approved_at' => null,
+            'rejected_at' => null,
+        ]);
+    }
+
+    /** حسابی که ادمین ردش کرده است. */
+    public function rejected(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'email_verified_at' => now(),
+            'approved_at' => null,
+            'rejected_at' => now(),
         ]);
     }
 }

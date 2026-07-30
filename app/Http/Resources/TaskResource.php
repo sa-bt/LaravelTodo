@@ -25,6 +25,10 @@ class TaskResource extends JsonResource
             'goal_id'    => $this->goal_id,
             'goal_title' => $this->whenLoaded('goal', fn () => $this->goal->title),
 
+            // Sent ready to use so the client never has to know the map from
+            // priority to weight. One source of truth, on the server.
+            'weight'     => $this->weight,
+
             // برای API، match با تقویم، ساخت/آپدیت و همه منطق‌های فرانت
             'day' => $day
                 ? $day->toDateString()
