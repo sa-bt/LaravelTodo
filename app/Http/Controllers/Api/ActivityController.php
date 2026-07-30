@@ -1,127 +1,322 @@
 <?php
-// app/Http/Controllers/Api/GoalController.php
 
 namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
-use App\Http\Requests\StoreGoalRequest;
-use App\Http\Requests\StoreTaskRequest;
-use App\Http\Requests\UpdateGoalRequest;
-use App\Http\Requests\UpdateTaskRequest;
-use App\Repositories\GoalRepository;
-use Illuminate\Http\JsonResponse;
-use App\Http\Resources\GoalResource;
 use App\Http\Resources\TaskResource;
-use App\Models\Task;
-use App\Repositories\TaskRepository;
+use App\Services\ActivityReportService;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Morilog\Jalali\Jalalian;
 
 class ActivityController extends Controller
 {
-   public function index($year)
+    /**
+     * Upper bound for the task list returned next to the backlog counter.
+     * The counter itself is never capped.
+     */
+    private const BACKLOG_DEFAULT_LIMIT = 100;
+
+    private const BACKLOG_MAX_LIMIT = 200;
+
+    /**
+     * Window of the per goal strip. Wide enough to show a habit, short enough
+     * to stay readable inside a card.
+     */
+    private const GOAL_ACTIVITY_DEFAULT_DAYS = 30;
+
+    private const GOAL_ACTIVITY_MIN_DAYS = 7;
+
+    private const GOAL_ACTIVITY_MAX_DAYS = 90;
+
+    /**
+     * How many goals the year card lists. A card is a highlight, not a table.
+     */
+    private const YEAR_REVIEW_TOP_GOALS = 5;
+
+    public function __construct(private ActivityReportService $reports) {}
+
+    /**
+     * Yearly activity report.
+     *
+     * Superseded by activity(), which takes a range instead of a jalali year.
+     * This route stays until the client has fully migrated, and its response
+     * shape must not change: the flat top level keys below are the old contract.
+     */
+    public function index(Request $request, $year): JsonResponse
     {
-        // ===========================================
-        // بخش ۱: آماده‌سازی داده‌های خام روزانه
-        // ===========================================
-        $start = Jalalian::fromFormat('Y-m-d', $year . '-01-01')->toCarbon();
+        $validated = $request->validate([
+            'goal_id' => ['nullable', 'integer', 'min:1'],
+        ]);
 
-        // بررسی کبیسه بودن سال شمسی
-        $isLeap = ((($year * 8) + 29) % 33) < 8;
-        $endDay = $isLeap ? 30 : 29;
+        $year = (int) $year;
 
-        // پایان سال (تاریخ شمسی)
-        $end = Jalalian::fromFormat('Y-m-d', $year . "-12-{$endDay}")->toCarbon();
-
-        // گرفتن تسک‌ها و گروه‌بندی بر اساس روز
-        $tasks = Task::whereBetween('day', [$start, $end])
-            ->selectRaw('day, COUNT(*) as total, SUM(is_done = 1) as done')
-            ->groupBy('day')
-            ->get()
-            ->keyBy(function ($item) {
-                return Jalalian::fromDateTime($item->day)->format('Y-n-j'); // کلید: 1404-1-1
-            });
-
-        // ساخت آرایه کامل روزهای سال
-        $days = [];
-        $cursor = $start->copy();
-        while ($cursor <= $end) {
-            $jalali = Jalalian::fromCarbon($cursor);
-            $key = $jalali->format('Y-n-j');
-
-            if ($tasks->has($key)) {
-                $days[$key] = [
-                    'total' => (int) $tasks[$key]->total,
-                    'done'  => (int) $tasks[$key]->done,
-                ];
-            } else {
-                $days[$key] = [
-                    'total' => 0,
-                    'done'  => 0,
-                ];
-            }
-
-            $cursor->addDay();
+        if (! $this->reports->isSupportedJalaliYear($year)) {
+            return $this->errorResponse(
+                errors: ['Invalid Jalali year.'],
+                messageKey: 'validation_error',
+                code: 422
+            );
         }
 
-        // ===========================================
-        // بخش ۲: محاسبه‌ی گزارش‌های سالانه
-        // ===========================================
-        
-        $todayJalali = Jalalian::fromDateTime(Carbon::now());
-        $todayNumeric = (int) $todayJalali->format('Ymd');
-        
-        $perfectDaysCount  = 0;
-        $inactiveDaysCount = 0; // ⬅️ مقداردهی اولیه برای روزهای بدون فعالیت
-        $totalDoneTasks    = 0;
-        $totalAllTasks     = 0; // ⬅️ مقداردهی اولیه برای کل تسک‌های تعریف شده تا امروز
-        
-        foreach ($days as $key => $data) {
-            $keyParts = explode('-', $key);
-            $keyNumeric = (int) ($keyParts[0] . str_pad($keyParts[1], 2, '0', STR_PAD_LEFT) . str_pad($keyParts[2], 2, '0', STR_PAD_LEFT));
+        $goalIds = $this->resolveGoalIds(
+            isset($validated['goal_id']) ? (int) $validated['goal_id'] : null
+        );
 
-            // فقط روزهایی که گذشته‌اند در محاسبات آماری لحاظ می‌شوند
-            if ($keyNumeric > $todayNumeric) {
-                continue;
-            }
-
-            $total = $data['total'];
-            $done  = $data['done'];
-
-            // ۱. روزهای کمال (Perfect Days Count)
-            $isPerfectDay = ($total > 0 && $done === $total);
-            if ($isPerfectDay) {
-                $perfectDaysCount++;
-            }
-
-            // ۲. تعداد روزهای بدون فعالیت (Total Inactive Days)
-            $isInactiveDay = ($total === 0);
-            if ($isInactiveDay) {
-                $inactiveDaysCount++;
-            }
-
-            // ۳. محاسبه‌ی جمع کل تسک‌ها و تسک‌های انجام شده (برای میانگین و گزارش کل)
-            $totalDoneTasks += $done;
-            $totalAllTasks  += $total; // ⬅️ جمع کل تسک‌های تعریف شده تا امروز
+        if ($goalIds instanceof JsonResponse) {
+            return $goalIds;
         }
-        
-        // محاسبه‌ی میانگین درصد تکمیل کلی
-        $averageCompletionPercentage = ($totalAllTasks > 0) 
-            ? round(($totalDoneTasks / $totalAllTasks) * 100, 1) // با یک رقم اعشار
-            : 0;
-        
-        // ===========================================
-        // بخش ۳: بازگرداندن داده‌ها و گزارش‌ها
-        // ===========================================
+
+        [$start, $end] = $this->reports->jalaliYearRange($year);
+
+        $days = $this->reports->dailyActivity($goalIds, $start, $end);
+        $summary = $this->reports->summarize($days);
+
         return response()->json([
             'status' => true,
             'data'   => $days,
-            // گزارش‌های جدید
-            'perfect_days_count'            => $perfectDaysCount,
-            'average_completion_percentage' => $averageCompletionPercentage,
-            'inactive_days'                 => $inactiveDaysCount, // ⬅️ گزارش جدید
-            'total_tasks_year_to_date'      => $totalAllTasks,     // ⬅️ گزارش جدید
+            'perfect_days_count'            => $summary['perfect_days'],
+            'average_completion_percentage' => $summary['average_percent'],
+            'inactive_days'                 => $summary['inactive_days'],
+            'total_tasks_year_to_date'      => $summary['total_tasks'],
         ]);
+    }
+
+    /**
+     * Activity report over an arbitrary range.
+     *
+     * Unlike the yearly route, a range here may cross the jalali new year, so
+     * a custom range is no longer clipped to one year.
+     */
+    public function activity(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'from'    => ['required', 'date_format:Y-m-d'],
+            'to'      => ['required', 'date_format:Y-m-d'],
+            'goal_id' => ['nullable', 'integer', 'min:1'],
+        ]);
+
+        $range = $this->resolveRange($validated['from'], $validated['to']);
+
+        if ($range instanceof JsonResponse) {
+            return $range;
+        }
+
+        [$from, $to] = $range;
+
+        $goalIds = $this->resolveGoalIds(
+            isset($validated['goal_id']) ? (int) $validated['goal_id'] : null
+        );
+
+        if ($goalIds instanceof JsonResponse) {
+            return $goalIds;
+        }
+
+        $days = $this->reports->dailyActivity($goalIds, $from, $to);
+
+        return $this->successResponse([
+            'from'    => $from->toDateString(),
+            'to'      => $to->toDateString(),
+            'days'    => $days,
+            'summary' => $this->reports->summarize($days),
+        ]);
+    }
+
+    /**
+     * Backlog report: how far behind the user is, and on what.
+     */
+    public function backlog(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'goal_id' => ['nullable', 'integer', 'min:1'],
+            'limit'   => ['nullable', 'integer', 'min:1', 'max:' . self::BACKLOG_MAX_LIMIT],
+        ]);
+
+        $goalIds = $this->resolveGoalIds(
+            isset($validated['goal_id']) ? (int) $validated['goal_id'] : null
+        );
+
+        if ($goalIds instanceof JsonResponse) {
+            return $goalIds;
+        }
+
+        $backlog = $this->reports->backlog(
+            $goalIds,
+            (int) ($validated['limit'] ?? self::BACKLOG_DEFAULT_LIMIT)
+        );
+
+        $oldestDay = $backlog['oldestDay'];
+
+        return $this->successResponse([
+            'count'             => $backlog['count'],
+            'returned'          => $backlog['tasks']->count(),
+            'oldest_day'        => $oldestDay?->toDateString(),
+            'oldest_day_shamsi' => $oldestDay ? Jalalian::fromCarbon($oldestDay)->format('Y-m-d') : null,
+            // Whole days between the oldest unfinished task and today.
+            'days_behind'       => $oldestDay ? $oldestDay->diffInDays(Carbon::today()) : 0,
+            'tasks'             => TaskResource::collection($backlog['tasks']),
+        ]);
+    }
+
+    /**
+     * A short daily series per goal, ending today.
+     *
+     * Feeds the small strip on every goal card, so the user sees how each goal
+     * is going without opening the report page. One request covers every goal.
+     */
+    public function goalActivity(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'days' => ['nullable', 'integer', 'min:' . self::GOAL_ACTIVITY_MIN_DAYS, 'max:' . self::GOAL_ACTIVITY_MAX_DAYS],
+        ]);
+
+        $days = (int) ($validated['days'] ?? self::GOAL_ACTIVITY_DEFAULT_DAYS);
+
+        // Tomorrow is not part of "the last thirty days".
+        $to = Carbon::today();
+        $from = $to->copy()->subDays($days - 1);
+
+        $report = $this->reports->goalActivity(auth()->user()->goals()->pluck('id'), $from, $to);
+
+        return $this->successResponse([
+            'from'  => $from->toDateString(),
+            'to'    => $to->toDateString(),
+            'days'  => $report['days'],
+            // Cast so a single goal, or none at all, still encodes as an object.
+            'goals' => (object) $report['goals'],
+        ]);
+    }
+
+    /**
+     * Goal ranking: completion rate of every goal inside a range.
+     *
+     * The user's goal filter is deliberately ignored here. The whole point of
+     * this report is comparing goals against each other.
+     */
+    public function goalRanking(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'from' => ['required', 'date_format:Y-m-d'],
+            'to'   => ['required', 'date_format:Y-m-d'],
+        ]);
+
+        $range = $this->resolveRange($validated['from'], $validated['to']);
+
+        if ($range instanceof JsonResponse) {
+            return $range;
+        }
+
+        [$from, $to] = $range;
+
+        // Future days never take part in a statistic, same as every other report.
+        $today = Carbon::today();
+
+        if ($to->gt($today)) {
+            $to = $today;
+        }
+
+        $goals = $from->gt($to)
+            ? collect()
+            : $this->reports->goalRanking(auth()->user()->goals()->pluck('title', 'id'), $from, $to);
+
+        return $this->successResponse([
+            'from'  => $from->toDateString(),
+            'to'    => $to->toDateString(),
+            'goals' => $goals,
+        ]);
+    }
+
+    /**
+     * Year card: the highlights of a whole jalali year in one response.
+     *
+     * The goal filter is ignored here on purpose, same as the ranking report.
+     * This card is a summary of the year as a whole, not of one goal.
+     */
+    public function yearReview(Request $request): JsonResponse
+    {
+        $validated = $request->validate([
+            'year' => ['nullable', 'integer'],
+        ]);
+
+        $year = (int) ($validated['year'] ?? Jalalian::fromCarbon(Carbon::today())->getYear());
+
+        if (! $this->reports->isSupportedJalaliYear($year)) {
+            return $this->errorResponse(
+                errors: ['Invalid Jalali year.'],
+                messageKey: 'validation_error',
+                code: 422
+            );
+        }
+
+        $goals = auth()->user()->goals()->pluck('title', 'id');
+
+        return $this->successResponse($this->reports->yearReview(
+            $goals->keys(),
+            $goals,
+            $year,
+            self::YEAR_REVIEW_TOP_GOALS
+        ));
+    }
+
+    /**
+     * Shared range parsing for every range based report.
+     *
+     * Returns the error response itself when the range is unusable, so the
+     * caller only has to forward it.
+     *
+     * @return array{0: Carbon, 1: Carbon}|JsonResponse
+     */
+    private function resolveRange(string $from, string $to): array|JsonResponse
+    {
+        $start = Carbon::createFromFormat('Y-m-d', $from)->startOfDay();
+        $end = Carbon::createFromFormat('Y-m-d', $to)->startOfDay();
+
+        if ($start->gt($end)) {
+            return $this->errorResponse(
+                errors: ['from must not be after to.'],
+                messageKey: 'validation_error',
+                code: 422
+            );
+        }
+
+        if ($this->reports->rangeLength($start, $end) > ActivityReportService::MAX_RANGE_DAYS) {
+            return $this->errorResponse(
+                errors: ['Range must not exceed ' . ActivityReportService::MAX_RANGE_DAYS . ' days.'],
+                messageKey: 'validation_error',
+                code: 422
+            );
+        }
+
+        return [$start, $end];
+    }
+
+    /**
+     * Ownership scope for every activity report.
+     *
+     * The tasks table has no user_id column, so task ownership is derived from
+     * the parent goal. Without this scope a report aggregates every user's tasks.
+     *
+     * Returns the error response itself when the requested goal is not the
+     * caller's, so the caller only has to forward it.
+     */
+    private function resolveGoalIds(?int $requestedGoalId): Collection|JsonResponse
+    {
+        $goalIds = auth()->user()->goals()->pluck('id');
+
+        if (empty($requestedGoalId)) {
+            return $goalIds;
+        }
+
+        if (! $goalIds->contains($requestedGoalId)) {
+            return $this->errorResponse(
+                errors: ['Goal not found or unauthorized.'],
+                messageKey: 'forbidden',
+                code: 403
+            );
+        }
+
+        return collect([$requestedGoalId]);
     }
 }

@@ -8,19 +8,28 @@ use Illuminate\Notifications\Notification;
 use NotificationChannels\WebPush\WebPushChannel;
 use NotificationChannels\WebPush\WebPushMessage;
 
-class DailyReportNotification extends Notification implements ShouldQueue
+/**
+ * A progress report pushed to the user, daily or weekly.
+ *
+ * Was DailyReportNotification. Nothing in it was ever daily specific: the
+ * caller supplies every field. The weekly report needed exactly the same
+ * envelope, and a second near identical class would have been the wrong way to
+ * get it.
+ */
+class ReportNotification extends Notification implements ShouldQueue
 {
     use Queueable;
 
     public function __construct(
         public string $title,
         public string $body,
+        public string $type,
+        public string $tag,
         public ?string $url = '/app/day',
         public ?int $percent = null,
         public ?int $remaining = null,
         public array $meta = [],
         public ?string $icon = '/pwa-192x192.png',
-        public ?string $tag = null,
         public bool $persisted = true,
     ) {}
 
@@ -44,8 +53,8 @@ class DailyReportNotification extends Notification implements ShouldQueue
             'body' => $this->body,
             'url' => $this->url ?? '/app/day',
             'icon' => $this->icon,
-            'tag' => $this->resolvedTag(),
-            'type' => $this->type(),
+            'tag' => $this->tag,
+            'type' => $this->type,
             'meta' => $this->meta,
             'percent' => $this->percent,
             'remaining' => $this->remaining,
@@ -64,7 +73,7 @@ class DailyReportNotification extends Notification implements ShouldQueue
             'persisted' => $this->persisted,
             'notification_id' => $this->persisted ? $this->id : null,
             'url' => $this->url ?? '/app/day',
-            'type' => $this->type(),
+            'type' => $this->type,
             'percent' => $this->percent,
             'remaining' => $this->remaining,
         ], $this->meta);
@@ -73,7 +82,7 @@ class DailyReportNotification extends Notification implements ShouldQueue
             ->title($this->title)
             ->body($this->body)
             ->icon($this->icon)
-            ->tag($this->resolvedTag())
+            ->tag($this->tag)
             ->data($data)
             ->vibrate([100, 50, 100])
             ->action('باز کردن', 'open')
@@ -83,15 +92,5 @@ class DailyReportNotification extends Notification implements ShouldQueue
                 'renotify' => false,
                 'requireInteraction' => false,
             ]);
-    }
-
-    private function type(): string
-    {
-        return $this->meta['type'] ?? 'daily_report';
-    }
-
-    private function resolvedTag(): string
-    {
-        return $this->tag ?: str(config('app.name'))->slug()->toString() . '-daily-report';
     }
 }

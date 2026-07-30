@@ -3,7 +3,9 @@
 namespace App\Jobs;
 
 use App\Models\User;
-use App\Notifications\DailyReportNotification;
+use App\Notifications\ReportNotification;
+use App\Services\ActivityReportService;
+use App\Services\ReportMessageService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -30,7 +32,7 @@ class SendDailyReportNotificationJob implements ShouldQueue
         $this->userId = $userId;
     }
 
-    public function handle(): void
+    public function handle(ReportMessageService $messages, ActivityReportService $reports): void
     {
         Log::info('Daily report notification job started.', [
             'user_id' => $this->userId,
@@ -43,7 +45,7 @@ class SendDailyReportNotificationJob implements ShouldQueue
         }
 
         $today = now()->toDateString();
-        $dedupKey = $this->makeDedupKey($user, $today);
+        $dedupKey = self::dedupKey($user->id, $today);
 
         if (Cache::has($dedupKey)) {
             Log::info('Daily report notification skipped because it was already sent.', [
@@ -65,8 +67,35 @@ class SendDailyReportNotificationJob implements ShouldQueue
             return;
         }
 
+        // Yesterday only takes part when it had tasks. Comparing against a day
+        // nothing was planned for would read as a collapse that never happened.
+        $yesterday = $this->getUserProgress($user->id, now()->subDay()->toDateString());
+        $yesterdayPercent = $yesterday['total'] > 0 ? $yesterday['percent'] : null;
+
+        $backlog = $reports->backlog($user->goals()->pluck('id'), 1)['count'];
+
+        $body = $messages->dailyBody($stats, $yesterdayPercent, $backlog);
+
         try {
-            $user->notify($this->makeNotification($stats, $today));
+            $user->notify(new ReportNotification(
+                title: '📊 گزارش روزانه',
+                body: $body,
+                type: 'daily_report',
+                tag: "daily-report-{$today}",
+                url: '/app/day',
+                percent: $stats['percent'],
+                remaining: $stats['remaining'],
+                meta: [
+                    'type' => 'daily_report',
+                    'date' => $today,
+                    'total' => $stats['total'],
+                    'done' => $stats['done'],
+                    'remaining' => $stats['remaining'],
+                    'percent' => $stats['percent'],
+                    'yesterday_percent' => $yesterdayPercent,
+                    'backlog' => $backlog,
+                ],
+            ));
 
             Cache::put($dedupKey, true, now()->addHours(25));
 
@@ -86,6 +115,18 @@ class SendDailyReportNotificationJob implements ShouldQueue
 
             throw $exception;
         }
+    }
+
+    /**
+     * Key that stops a second send on the same day.
+     *
+     * Public because changing the report settings has to be able to clear it,
+     * otherwise a user who turns the report on after its hour has passed waits
+     * until tomorrow without knowing why.
+     */
+    public static function dedupKey(int $userId, string $date): string
+    {
+        return "daily-report:user:{$userId}:date:{$date}";
     }
 
     private function canSendDailyReport(?User $user): bool
@@ -109,50 +150,12 @@ class SendDailyReportNotificationJob implements ShouldQueue
         return true;
     }
 
-    private function makeDedupKey(User $user, string $date): string
-    {
-        return "daily-report:user:{$user->id}:date:{$date}";
-    }
-
-    private function makeNotification(array $stats, string $date): DailyReportNotification
-    {
-        return new DailyReportNotification(
-            title: '📊 گزارش روزانه',
-            body: $this->makeBody($stats),
-            url: '/app/day',
-            percent: $stats['percent'],
-            remaining: $stats['remaining'],
-            meta: [
-                'type' => 'daily_report',
-                'date' => $date,
-                'total' => $stats['total'],
-                'done' => $stats['done'],
-                'remaining' => $stats['remaining'],
-                'percent' => $stats['percent'],
-            ],
-            tag: "daily-report-{$date}",
-            persisted: true,
-        );
-    }
-
-    private function makeBody(array $stats): string
-    {
-        $total = $stats['total'];
-        $done = $stats['done'];
-        $remaining = $stats['remaining'];
-        $percent = $stats['percent'];
-
-        if ($remaining === 0) {
-            return "🎉 عالی! همه {$total} تسک رو انجام دادی!";
-        }
-
-        if ($done === 0) {
-            return "هنوز شروع نکردی! {$total} تسک منتظرن 🎯";
-        }
-
-        return "{$done} از {$total} تسک انجام شد ({$percent}%)";
-    }
-
+    /**
+     * Today's tasks of the user.
+     *
+     * Tasks of a goal that has children are left out, the same rule the
+     * progress notification uses.
+     */
     private function getUserProgress(int $userId, string $date): array
     {
         $user = User::query()

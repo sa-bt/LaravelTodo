@@ -27,6 +27,11 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::apiResource('tasks', TaskController::class);
     Route::post('goal-tasks', [GoalController::class, 'tasks']);
     Route::get('/activities/{year}', [ActivityController::class, 'index']);
+    Route::get('/reports/activity', [ActivityController::class, 'activity']);
+    Route::get('/reports/backlog', [ActivityController::class, 'backlog']);
+    Route::get('/reports/goal-ranking', [ActivityController::class, 'goalRanking']);
+    Route::get('/reports/goal-activity', [ActivityController::class, 'goalActivity']);
+    Route::get('/reports/year-review', [ActivityController::class, 'yearReview']);
     Route::get('/user-setting', [UserSettingController::class, 'getSetting']);
     Route::post('/user-setting', [UserSettingController::class, 'saveSetting']);
 
