@@ -40,11 +40,20 @@ class SendWeeklyReportsDue extends Command
 
         $this->info("Dispatched {$dispatched} weekly report jobs at {$now->format('H:i')}");
 
-        Log::info('WeeklyReport scan completed', [
-            'dispatched' => $dispatched,
-            'weekday' => $weekday,
-            'time' => $now->format('H:i'),
-        ]);
+        /*
+         * This command runs every minute, so logging the scan unconditionally
+         * wrote a line a minute forever: roughly 7,200 lines a day, and 110 MB
+         * of laravel.log in six months, of which 99.99% said "dispatched 0".
+         * A scan that dispatched nothing is the normal case and says nothing,
+         * so only a scan that actually sent something is worth a line.
+         */
+        if ($dispatched > 0) {
+            Log::info('WeeklyReport scan completed', [
+                'dispatched' => $dispatched,
+                'weekday' => $weekday,
+                'time' => $now->format('H:i'),
+            ]);
+        }
 
         return self::SUCCESS;
     }
