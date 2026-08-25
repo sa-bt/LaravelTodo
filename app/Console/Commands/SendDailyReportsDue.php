@@ -40,10 +40,14 @@ class SendDailyReportsDue extends Command
 
         $this->info("Dispatched {$dispatched} daily report jobs at {$currentTime}");
 
-        Log::info("DailyReport scan completed", [
-            'dispatched' => $dispatched,
-            'time' => $currentTime,
-        ]);
+        // Runs every minute, so an unconditional line here is pure noise: the
+        // scan finding nothing due is the ordinary case. Only real work is logged.
+        if ($dispatched > 0) {
+            Log::info("DailyReport scan completed", [
+                'dispatched' => $dispatched,
+                'time' => $currentTime,
+            ]);
+        }
 
         return self::SUCCESS;
     }

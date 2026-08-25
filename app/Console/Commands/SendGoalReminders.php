@@ -22,7 +22,12 @@ class SendGoalReminders extends Command
         $ttlSeconds  = 70;                               // کمی بیشتر از یک دقیقه برای پوشش جیتِر
         $onePerGoal  = (bool) (config('notifications.reminders.one_per_goal', true)); // true: فقط یکی برای هر goal
 
-        Log::info("Goal reminder scan at {$currentTime}", ['today' => $today, 'one_per_goal' => $onePerGoal]);
+        /*
+         * There used to be a "Goal reminder scan at ..." line here. It ran
+         * before the query, so it fired every single minute regardless of
+         * whether anything was due, and recorded nothing the completion line
+         * below does not already say when work actually happens.
+         */
 
         $base = Goal::query()
             ->where('send_task_reminder', true)
@@ -70,7 +75,12 @@ class SendGoalReminders extends Command
         });
 
         $this->info("Dispatched {$dispatched} reminder jobs at {$currentTime}");
-        Log::info("Goal reminder dispatch completed", ['dispatched' => $dispatched, 'at' => $currentTime]);
+
+        // Same reason as the removed scan line: every-minute command, so only a
+        // run that dispatched something is worth a log entry.
+        if ($dispatched > 0) {
+            Log::info("Goal reminder dispatch completed", ['dispatched' => $dispatched, 'at' => $currentTime]);
+        }
 
         return Command::SUCCESS;
     }
